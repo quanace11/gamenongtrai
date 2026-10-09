@@ -109,7 +109,7 @@ func _ready() -> void:
 	camera = Camera3D.new()
 	camera.fov = 72
 	camera.near = 0.05
-	camera.far = 400
+	camera.far = 1500
 	add_child(camera)
 	camera.make_current()
 	player = PlayerScript.new(camera, audio)
@@ -1153,6 +1153,8 @@ func _step(dt: float) -> void:
 	_keyboard_look(dt)
 	var load_frac: float = inv.sheaves / float(CARRY)
 	var moved: float = player.update(dt, _move_input(), Input.is_physical_key_pressed(KEY_SHIFT), field, load_frac)
+	# Shaders bend grass and ripple water around the player's feet.
+	RenderingServer.global_shader_parameter_set("player_pos", Vector3(player.pos.x, player.y, player.pos.z))
 	var pole_active: bool = tools.current == "sao" and mouse_left and mode == "walk"
 	tools.animate(dt, player.moving, player.bob_phase, real_t, pole_active, load_frac)
 
@@ -1320,6 +1322,10 @@ func _shot(name: String) -> void:
 		if a.begins_with("--shots="):
 			await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png(a.substr(8) + "/" + name + ".png")
+			print("SHOT %s prims=%d draws=%d fps=%d" % [name,
+				Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
+				Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+				Performance.get_monitor(Performance.TIME_FPS)])
 
 
 func _wait(sec: float) -> void:
@@ -1376,6 +1382,10 @@ func _run_tour() -> void:
 	await _set_time(9.0)
 	await _shot("tour-2-house")
 	_debug_skip_prep()
+	field.water = 5.0
+	await _look_at(-7.5, 7.5, 8, -6, -0.1)
+	await _set_time(8.0)
+	await _shot("tour-12-flooded-mirror")
 	_debug_plant_all()
 	field.water = 4.0
 	field.growth_day = 2
@@ -1395,6 +1405,16 @@ func _run_tour() -> void:
 	await _set_time(12.0)
 	_select_tool("liem")
 	await _shot("tour-6-sickle")
+	_select_tool("tay")
+	await _look_at(-9.0, -3, -11, -3, -0.55)
+	await _shot("tour-13-hands")
+	await _look_at(12, -9, 20, -14, -0.25)
+	await _set_time(11.0)
+	await _shot("tour-14-lawn")
+	await _look_at(0, 9.3, 0, 60, 0.03)
+	await _set_time(9.5)
+	await _shot("tour-15-far-karst")
+	await _set_time(12.0)
 	stage = "drying"
 	court.pour(140.0)
 	for k in 4:

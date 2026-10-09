@@ -33,3 +33,15 @@ rain_amount={
 "type": "float",
 "value": 0.0
 }
+wind_dir={
+"type": "vec2",
+"value": Vector2(0.8, 0.6)
+}
+player_pos={
+"type": "vec3",
+"value": Vector3(0, -100, 0)
+}
+wetness={
+"type": "float",
+"value": 0.0
+}
