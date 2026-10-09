@@ -30,9 +30,14 @@ func right() -> Vector3:
 	return Vector3(cos(yaw), 0, -sin(yaw))
 
 
-func look(rel: Vector2) -> void:
-	yaw -= rel.x * 0.0022
-	pitch = clampf(pitch - rel.y * 0.0022, -1.45, 1.35)
+const LOOK_SPEED := 0.0013 # radians per mouse count at sensitivity 1 (~15 cm per turn at 800 DPI)
+
+
+# rel: mouse movement in screen pixels, already scaled by sensitivity.
+func look(rel: Vector2, invert_y := false) -> void:
+	yaw = wrapf(yaw - rel.x * LOOK_SPEED, -PI, PI)
+	var dy := rel.y * LOOK_SPEED * (-1.0 if invert_y else 1.0)
+	pitch = clampf(pitch - dy, -1.5, 1.45)
 
 
 func terrain(field) -> String:

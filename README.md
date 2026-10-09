@@ -9,9 +9,11 @@ Prototype Godot 4 cho game nông trại lúa nước góc nhìn thứ nhất, gi
 
 ## Chạy thử
 
-1. Cài [Godot 4.3](https://godotengine.org/download) (bản Standard, không cần .NET).
+1. Cài [Godot 4.6](https://godotengine.org/download) (bản Standard, không cần .NET; đã thử với 4.6.3, cũng có ở [GitHub releases](https://github.com/godotengine/godot/releases/tag/4.6.3-stable)). Project dùng tính năng của 4.6 nên không mở được bằng 4.3.
 2. Mở Godot, chọn **Import** và trỏ tới `project.godot` trong thư mục này.
 3. Bấm **Run** (F5).
+
+Từ Godot 4.4, editor nhúng game vào tab **Game**. Nếu chuột không xoay được camera khi chạy trong editor, bấm nút **Input** trên thanh công cụ của tab Game (hoặc tắt nhúng ở Editor Settings › Run › Window Placement › Game Embed Mode = Disabled).
 
 Hoặc chạy bằng dòng lệnh: lần đầu `godot --path . --import` để import asset, sau đó `godot --path .`
 
@@ -32,14 +34,17 @@ godot --path . -- --tour --shots=/tmp/s      # chỉ chụp ảnh cảnh vật �
 | Phím | Việc |
 |---|---|
 | `W A S D`, `Shift` | Đi, chạy (tốn sức) |
-| Chuột | Nhìn quanh |
-| Chuột trái | Dùng dụng cụ đang cầm (giữ để bừa / lùa vịt) |
+| Chuột, hoặc phím mũi tên | Nhìn quanh (ngang và dọc) |
+| Lăn chuột | Đổi dụng cụ |
+| Chuột trái | Dùng dụng cụ đang cầm (giữ để bừa / lùa vịt); khi tay không thì tương tác như `E` |
 | Chuột phải | Cào vun thóc |
 | `E` | Tương tác (giữ để lặp: nhổ mạ, đập lúa, vớt bèo…) |
 | `1`–`7` | Tay không, Cuốc, Bừa, Gàu sòng, Liềm, Cào, Sào vịt |
 | `Q` | Huýt sáo gọi đàn vịt |
-| `Esc` | Tạm dừng |
+| `Esc` | Tạm dừng; trong menu chỉnh độ nhạy chuột và đảo chiều trục dọc |
 | Mini-game cấy | `Space` lùi · `A` trái · `S` giữa · `D` phải · `Enter` nhờ hàng xóm cấy nốt |
+
+Vòng tròn ở tâm màn hình cho biết thứ đang nhắm tới có thể tương tác. Phím được đọc theo vị trí vật lý, nhưng nếu bộ gõ tiếng Việt (Unikey, EVKey) đang bật kiểu Telex thì nên tắt khi chơi.
 
 ## Một vụ lúa trong prototype
 

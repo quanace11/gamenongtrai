@@ -93,8 +93,8 @@ func _begin_lane() -> void:
 func _place_camera(snap: bool) -> void:
 	player.pos.x = lane_x(lane)
 	player.pos.z = row_z - 0.75
-	player.yaw = PI # facing +z, stepping backwards toward -z
 	if snap:
+		player.yaw = PI # facing +z, stepping backwards toward -z
 		player.pitch = -0.75
 
 

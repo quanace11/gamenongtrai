@@ -6,6 +6,9 @@ const TOOLS = preload("res://scripts/tools.gd").TOOLS
 
 signal play_pressed
 signal new_season_pressed
+signal resume_pressed
+signal sens_changed(value: float)
+signal invert_changed(value: bool)
 
 var clock: Label
 var objective: RichTextLabel
@@ -23,6 +26,11 @@ var start_screen: Control
 var pause_screen: Control
 var summary_screen: Control
 var summary_text: RichTextLabel
+var sens_slider: HSlider
+var crosshair: Panel
+var _cross_state := ""
+var sens_label: Label
+var invert_box: CheckBox
 # rhythm mini-game
 var rhythm: Control
 var rhythm_info: RichTextLabel
@@ -88,12 +96,13 @@ func _ready() -> void:
 	vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(vignette)
 
-	var cross := ColorRect.new()
-	cross.color = Color(1, 1, 1, 0.8)
-	cross.size = Vector2(6, 6)
-	cross.set_anchors_preset(Control.PRESET_CENTER)
-	_offset(cross, -3, -3, 3, 3)
-	root.add_child(cross)
+	# The captured cursor sits exactly here, so the crosshair must never
+	# take mouse events (it used to swallow every look and click).
+	crosshair = Panel.new()
+	crosshair.set_anchors_preset(Control.PRESET_CENTER)
+	crosshair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(crosshair)
+	set_crosshair("aim")
 
 	prompt = _label("", 16)
 	prompt.set_anchors_preset(Control.PRESET_CENTER)
@@ -167,6 +176,18 @@ func _ready() -> void:
 
 	_build_rhythm(root)
 	_build_screens(root)
+	# Nothing on the in-game overlay may take the mouse: while the cursor is
+	# captured it sits at the screen centre, right on the crosshair.
+	for c in root.get_children():
+		if c != start_screen and c != pause_screen and c != summary_screen:
+			_ignore_mouse(c)
+
+
+func _ignore_mouse(c: Node) -> void:
+	if c is Control:
+		(c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for k in c.get_children():
+		_ignore_mouse(k)
 
 
 func _build_rhythm(root: Control) -> void:
@@ -198,6 +219,7 @@ func _build_rhythm(root: Control) -> void:
 
 func make_note(keycap: String, text: String, color: Color) -> ColorRect:
 	var n := ColorRect.new()
+	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	n.color = color
 	n.size = Vector2(52, 48)
 	n.position = Vector2(-100, 8)
@@ -253,9 +275,10 @@ func _build_screens(root: Control) -> void:
 Một vụ lúa ở làng quê Bắc Bộ, qua đôi mắt người nông dân · [i]A season of wet-rice farming, first-person[/i]
 
 [color=#cfe8a0][b]Điều khiển[/b][/color]
-W A S D đi lại · Shift chạy · Chuột để nhìn
-Chuột trái: dùng dụng cụ · Chuột phải: cào vun thóc
-E: tương tác (giữ để lặp lại) · 1–7: chọn dụng cụ · Q: huýt sáo gọi vịt · Esc: tạm dừng
+W A S D đi lại · Shift chạy · Chuột (hoặc phím mũi tên) để nhìn quanh · Lăn chuột: đổi dụng cụ
+Chuột trái: dùng dụng cụ (tay không: tương tác) · Chuột phải: cào vun thóc
+E: tương tác (giữ để lặp lại) · 1–7: chọn dụng cụ · Q: huýt sáo gọi vịt · Esc: tạm dừng, chỉnh độ nhạy chuột
+[color=#999999]Nếu W/E không ăn, hãy tắt bộ gõ tiếng Việt (Unikey/EVKey) khi chơi.[/color]
 
 [color=#cfe8a0][b]Một vụ lúa[/b][/color]
 1. Cuốc đất, mở cống dẫn nước, bừa bùn nhuyễn
@@ -272,9 +295,25 @@ E: tương tác (giữ để lặp lại) · 1–7: chọn dụng cụ · Q: hu�
 	s = _screen(root)
 	pause_screen = s[0]
 	var pt := _rich(16)
-	pt.custom_minimum_size = Vector2(320, 0)
-	pt.text = "[font_size=24][color=#ffe08a]Tạm nghỉ[/color][/font_size]\nBấm vào màn hình để tiếp tục."
+	pt.custom_minimum_size = Vector2(360, 0)
+	pt.text = "[font_size=24][color=#ffe08a]Tạm nghỉ[/color][/font_size]\nEsc hoặc bấm Tiếp tục để quay lại ruộng."
 	s[1].add_child(pt)
+	sens_label = _label("", 15)
+	s[1].add_child(sens_label)
+	sens_slider = HSlider.new()
+	sens_slider.min_value = 0.2
+	sens_slider.max_value = 3.0
+	sens_slider.step = 0.05
+	sens_slider.custom_minimum_size = Vector2(360, 24)
+	sens_slider.value_changed.connect(_on_sens_slider)
+	s[1].add_child(sens_slider)
+	invert_box = CheckBox.new()
+	invert_box.text = "Đảo chiều chuột lên/xuống · Invert Y"
+	invert_box.toggled.connect(func(v: bool): invert_changed.emit(v))
+	s[1].add_child(invert_box)
+	var resume := _button("Tiếp tục · Resume")
+	resume.pressed.connect(func(): resume_pressed.emit())
+	s[1].add_child(resume)
 	pause_screen.visible = false
 
 	s = _screen(root)
@@ -286,6 +325,17 @@ E: tương tác (giữ để lặp lại) · 1–7: chọn dụng cụ · Q: hu�
 	again.pressed.connect(func(): new_season_pressed.emit())
 	s[1].add_child(again)
 	summary_screen.visible = false
+
+
+func _on_sens_slider(v: float) -> void:
+	sens_label.text = "Độ nhạy chuột · Mouse sensitivity: %.2f" % v
+	sens_changed.emit(v)
+
+
+func set_mouse_settings(sens: float, invert: bool) -> void:
+	sens_slider.set_value_no_signal(sens)
+	sens_label.text = "Độ nhạy chuột · Mouse sensitivity: %.2f" % sens
+	invert_box.set_pressed_no_signal(invert)
 
 
 func _offset(c: Control, x: float, y: float, x2 = null, y2 = null) -> void:
@@ -312,6 +362,27 @@ func tool(id: String) -> void:
 		slots[k].add_theme_stylebox_override("panel", st)
 
 
+# "aim": a small dot · "use": a ring when E / left click would do something.
+func set_crosshair(state: String) -> void:
+	if state == _cross_state:
+		return
+	_cross_state = state
+	var r := 9 if state == "use" else 2
+	_offset(crosshair, -r, -r, r, r)
+	var st := StyleBoxFlat.new()
+	st.set_corner_radius_all(r)
+	st.anti_aliasing = true
+	if state == "use":
+		st.bg_color = Color(1, 1, 1, 0.0)
+		st.border_color = Color(1, 0.95, 0.8, 0.9)
+		st.set_border_width_all(2)
+	else:
+		st.bg_color = Color(1, 1, 1, 0.85)
+		st.border_color = Color(0, 0, 0, 0.45)
+		st.set_border_width_all(1)
+	crosshair.add_theme_stylebox_override("panel", st)
+
+
 func set_prompt(text: String) -> void:
 	set_text(prompt, "prompt", ("[E] " + text) if text != "" else "")
 
@@ -335,6 +406,7 @@ func log_msg(text: String, kind := "info") -> void:
 	st.border_width_left = 3
 	var p := PanelContainer.new()
 	p.add_theme_stylebox_override("panel", st)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	p.add_child(l)
 	log_box.add_child(p)
 	while log_box.get_child_count() > 4:
