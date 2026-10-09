@@ -3,6 +3,10 @@
 extends Node3D
 
 const L = preload("res://scripts/layout.gd")
+const A = preload("res://scripts/assets.gd")
+const F = preload("res://scripts/flora.gd")
+const W = preload("res://scripts/world.gd")
+const SOIL = preload("res://shaders/soil.gdshader")
 const N := 8 # soil grid: 8 x 8 cells of 2 m
 const CELL := 2.0
 const MAX_CLUMPS := 700
@@ -30,7 +34,7 @@ var rice_dirty := true
 var _noise := PackedFloat32Array()
 var _soil: MeshInstance3D
 var _water: MeshInstance3D
-var _water_mat: StandardMaterial3D
+var _soil_mat: ShaderMaterial
 var _rice: MultiMeshInstance3D
 var _panicles: MultiMeshInstance3D
 var _weeds: MultiMeshInstance3D
@@ -43,38 +47,29 @@ func _ready() -> void:
 	_noise.resize(VERT * VERT)
 	for i in _noise.size():
 		_noise[i] = randf()
-	var sm := StandardMaterial3D.new()
-	sm.vertex_color_use_as_albedo = true
-	sm.roughness = 1.0
+	_soil_mat = ShaderMaterial.new()
+	_soil_mat.shader = SOIL
+	for k in [["dry", "mud_cracked_dry_03"], ["till", "farm_soil"], ["mud", "brown_mud_03"]]:
+		_soil_mat.set_shader_parameter(k[0] + "_alb", A.tex(k[1], "diff"))
+		_soil_mat.set_shader_parameter(k[0] + "_nor", A.tex(k[1], "nor"))
+		_soil_mat.set_shader_parameter(k[0] + "_arm", A.tex(k[1], "arm"))
 	_soil = MeshInstance3D.new()
-	_soil.material_override = sm
+	_soil.material_override = _soil_mat
 	_soil.position.y = L.FIELD.y
 	add_child(_soil)
 
 	var wp := PlaneMesh.new()
 	wp.size = Vector2(16, 16)
-	_water_mat = StandardMaterial3D.new()
-	_water_mat.albedo_color = Color(0.54, 0.65, 0.6, 0.5)
-	_water_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_water_mat.roughness = 0.05
-	_water_mat.metallic_specular = 0.9
 	_water = MeshInstance3D.new()
 	_water.mesh = wp
-	_water.material_override = _water_mat
+	_water.material_override = W.water_material("paddy")
+	_water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_water.visible = false
 	add_child(_water)
 
 	_rice = _multimesh(_clump_mesh(), MAX_CLUMPS)
 	_panicles = _multimesh(_panicle_mesh(), MAX_CLUMPS)
-	var wc := CylinderMesh.new()
-	wc.top_radius = 0.0
-	wc.bottom_radius = 0.15
-	wc.height = 0.4
-	wc.radial_segments = 4
-	_weeds = _multimesh(wc, 80)
-	var wmat := _weeds.material_override as StandardMaterial3D
-	wmat.vertex_color_use_as_albedo = false
-	wmat.albedo_color = Color("4f7a2a")
+	_weeds = _multimesh(F.tuft_mesh(8, 0.45, 0.03), 80)
 	for i in 80:
 		_weed_pos.append(Vector2(randf_range(-7.6, 7.6), randf_range(-7.6, 7.6)))
 
@@ -86,46 +81,65 @@ func _multimesh(mesh: Mesh, count: int) -> MultiMeshInstance3D:
 	mm.mesh = mesh
 	mm.instance_count = count
 	mm.visible_instance_count = 0
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	m.roughness = 0.9
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
-	mmi.material_override = m
+	mmi.material_override = F.material("blade")
 	add_child(mmi)
 	return mmi
 
 
+# One transplanted clump (khóm lúa): ~16 curved, tapering leaves. Vertex
+# alpha runs 0 at the base to 1 at the tip for the foliage shader's AO.
 func _clump_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var blades := 11
+	var blades := 16
 	for i in blades:
 		var a := float(i) / blades * TAU + randf() * 0.5
-		var lean := 0.12 + randf() * 0.22
-		var h := 0.75 + randf() * 0.3
-		var w := 0.022
+		var lean := 0.15 + randf() * 0.3
+		var h := 0.7 + randf() * 0.35
+		var w := 0.018 + randf() * 0.008
 		var d := Vector3(cos(a), 0, sin(a))
-		var p := Vector3(-sin(a), 0, cos(a)) * w
-		var base := d * 0.03
-		var mid := base + d * lean * h * 0.4 + Vector3(0, h * 0.55, 0)
-		var tip := base + d * lean * h + Vector3(0, h, 0)
-		for v in [base - p, base + p, mid + p * 0.7, base - p, mid + p * 0.7, mid - p * 0.7, mid - p * 0.7, mid + p * 0.7, tip]:
-			st.add_vertex(v)
+		var side := Vector3(-sin(a), 0, cos(a))
+		var base := d * 0.025
+		var prev := []
+		for k in 6:
+			var t := k / 5.0
+			var p := base + d * lean * h * t * t + Vector3(0, h * (t - 0.25 * t * t * lean * 2.0), 0)
+			var ww := w * (1.0 - t * 0.85)
+			var cur := [p - side * ww, p + side * ww]
+			if k > 0:
+				var c0 := Color(1, 1, 1, (k - 1) / 5.0)
+				var c1 := Color(1, 1, 1, t)
+				for v in [[prev[0], c0], [prev[1], c0], [cur[1], c1], [prev[0], c0], [cur[1], c1], [cur[0], c1]]:
+					st.set_color(v[1])
+					st.add_vertex(v[0])
+			prev = cur
 	st.generate_normals()
 	return st.commit()
 
 
+# Drooping panicles (bông lúa): arcs of grain lumps hanging out of the clump.
 func _panicle_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in 6:
-		var a := i / 6.0 * TAU
+	for i in 7:
+		var a := i / 7.0 * TAU + randf() * 0.4
 		var d := Vector3(cos(a), 0, sin(a))
-		var p := Vector3(-sin(a), 0, cos(a)) * 0.03
-		for v in [d * 0.05 - p + Vector3(0, 0.95, 0), d * 0.05 + p + Vector3(0, 0.95, 0), d * 0.22 + Vector3(0, 0.68, 0)]:
-			st.add_vertex(v)
+		var side := Vector3(-sin(a), 0, cos(a))
+		var prev := []
+		for k in 7:
+			var t := k / 6.0
+			var p := d * (0.04 + 0.2 * t) + Vector3(0, 0.98 - 0.32 * t * t, 0)
+			var w := 0.022 * sin(PI * clampf(t * 1.1 + 0.1, 0.0, 1.0)) + 0.004
+			var cur := [p - side * w, p + side * w, p + Vector3(0, w, 0)]
+			if k > 0:
+				var c := Color(1, 1, 1, 1)
+				for tri in [[prev[0], prev[1], cur[1]], [prev[0], cur[1], cur[0]], [prev[0], prev[2], cur[2]], [prev[0], cur[2], cur[0]]]:
+					for v in tri:
+						st.set_color(c)
+						st.add_vertex(v)
+			prev = cur
 	st.generate_normals()
 	return st.commit()
 
@@ -320,7 +334,7 @@ func refresh() -> void:
 		_update_rice()
 	_water.visible = water > 0.15
 	_water.position.y = L.FIELD.y + 0.01 + water * WATER_VIS
-	_water_mat.albedo_color.a = clampf(0.25 + water * 0.06, 0.25, 0.75)
+	_soil_mat.set_shader_parameter("wet", clampf(water / 2.0, 0.0, 1.0))
 
 
 func _update_soil() -> void:
@@ -338,10 +352,8 @@ func _update_soil() -> void:
 			var s := smooth[idx]
 			var nz := _noise[vj * VERT + vi]
 			var crack := t < 0.5 and nz > 0.72
-			var c := Color(0.66, 0.54, 0.38).lerp(Color(0.4, 0.29, 0.18), t)
-			if crack:
-				c = c.darkened(0.4)
-			c = c.lerp(Color(0.26, 0.2, 0.13), s)
+			# The soil shader reads R = hoed, G = puddled.
+			var c := Color(t, s, 1.0 if crack else 0.0)
 			var edge := absf(x) > 7.9 or absf(z) > 7.9
 			var y := 0.0
 			if not edge:
@@ -379,13 +391,13 @@ func _update_rice() -> void:
 			mm.set_instance_transform(i, Transform3D(b.scaled(Vector3(0.8, 0.18, 0.8)), pos))
 			mm.set_instance_color(i, Color(0.78, 0.68, 0.42))
 			continue
-		var c := Color(0.36, 0.62, 0.2).lerp(Color(0.85, 0.68, 0.22), ripe)
+		var c := Color(0.34, 0.56, 0.16).lerp(Color(0.74, 0.64, 0.3), ripe)
 		c = c.lerp(Color(0.7, 0.6, 0.3), yellow * (1.0 - ripe))
 		mm.set_instance_transform(i, Transform3D(b.scaled(Vector3(grow, grow, grow)), pos))
 		mm.set_instance_color(i, c)
 		if growth_day >= 5:
 			pm.set_instance_transform(pi, Transform3D(b.scaled(Vector3(grow, grow * (1.0 - ripe * 0.1), grow)), pos))
-			pm.set_instance_color(pi, Color(0.55, 0.66, 0.3).lerp(Color(0.88, 0.66, 0.2), ripe))
+			pm.set_instance_color(pi, Color(0.55, 0.62, 0.3).lerp(Color(0.86, 0.7, 0.32), ripe))
 			pi += 1
 	mm.visible_instance_count = clumps.size()
 	pm.visible_instance_count = pi
@@ -393,5 +405,5 @@ func _update_rice() -> void:
 	var nw := int(round(weeds * 80))
 	wm.visible_instance_count = nw
 	for i in nw:
-		wm.set_instance_transform(i, Transform3D(Basis(), Vector3(_weed_pos[i].x, L.FIELD.y + 0.15, _weed_pos[i].y)))
-		wm.set_instance_color(i, Color.WHITE)
+		wm.set_instance_transform(i, Transform3D(Basis(), Vector3(_weed_pos[i].x, L.FIELD.y, _weed_pos[i].y)))
+		wm.set_instance_color(i, Color(0.3, 0.48, 0.14).lerp(Color(0.45, 0.55, 0.2), float(i % 5) / 4.0))

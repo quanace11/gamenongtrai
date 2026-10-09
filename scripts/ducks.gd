@@ -16,15 +16,36 @@ func setup(audio_node: Node, n := 10) -> void:
 	for i in n:
 		var node := Node3D.new()
 		add_child(node)
-		W.sphere(node, 0.18, Color("f3efe4"), Vector3(0, 0.17, 0), Vector3(1, 0.75, 1.5))
-		W.sphere(node, 0.09, Color("f3efe4"), Vector3(0, 0.33, 0.22))
-		W.box(node, Vector3(0.06, 0.03, 0.1), Color("e8a23a"), Vector3(0, 0.31, 0.33))
+		_build_duck(node, i)
 		list.append({
 			"node": node,
 			"pos": Vector3(randf_range(p.x0 + 0.5, p.x1 - 0.5), 0, randf_range(p.z0 + 0.5, p.z1 - 0.5)),
 			"vel": Vector3.ZERO,
 			"wander": randf() * TAU,
 		})
+
+
+# Vịt cỏ: mostly mottled brown, a few white, with orange bills and feet.
+func _build_duck(node: Node3D, i: int) -> void:
+	var white := i % 4 == 0
+	var feather := StandardMaterial3D.new()
+	feather.albedo_color = Color("ece6d6") if white else Color("7a5a3a").lerp(Color("9a7a52"), randf())
+	feather.roughness = 0.85
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color("ece6d6") if white else Color("3a3a2c")
+	dark.roughness = 0.6
+	var bill := StandardMaterial3D.new()
+	bill.albedo_color = Color("e8a23a") if white else Color("c8a040")
+	bill.roughness = 0.5
+	W.sphere(node, 0.18, Color.WHITE, Vector3(0, 0.18, 0), Vector3(0.9, 0.75, 1.5)).material_override = feather
+	W.sphere(node, 0.06, Color.WHITE, Vector3(0, 0.27, -0.27), Vector3(1, 0.7, 1.6)).material_override = feather
+	var neck := W.cyl(node, 0.045, 0.06, 0.18, Color.WHITE, Vector3(0, 0.33, 0.2), 8)
+	neck.rotation.x = 0.4
+	neck.material_override = feather
+	W.sphere(node, 0.085, Color.WHITE, Vector3(0, 0.43, 0.25), Vector3(0.9, 0.95, 1.15)).material_override = dark
+	W.box(node, Vector3(0.06, 0.025, 0.11), Color.WHITE, Vector3(0, 0.41, 0.36)).material_override = bill
+	for s in [-1, 1]:
+		W.box(node, Vector3(0.05, 0.08, 0.04), Color.WHITE, Vector3(s * 0.06, 0.04, 0.02)).material_override = bill
 
 
 func whistle() -> void:

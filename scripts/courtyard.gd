@@ -3,6 +3,7 @@
 extends Node3D
 
 const L = preload("res://scripts/layout.gd")
+const A = preload("res://scripts/assets.gd")
 const C := 12
 const R := 6
 
@@ -21,7 +22,7 @@ func _ready() -> void:
 	moist.fill(1.0)
 	soaked.resize(C * R)
 	var b := BoxMesh.new()
-	b.size = Vector3(0.98, 1, 0.98)
+	b.size = Vector3(1.0, 1, 1.0)
 	_mm = MultiMesh.new()
 	_mm.transform_format = MultiMesh.TRANSFORM_3D
 	_mm.use_colors = true
@@ -29,7 +30,15 @@ func _ready() -> void:
 	_mm.instance_count = C * R
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
-	m.roughness = 1.0
+	m.vertex_color_is_srgb = true
+	m.roughness = 0.8
+	# Grain-sized bumps so the heaps read as loose paddy.
+	m.normal_enabled = true
+	m.normal_texture = A.tex("farm_soil", "nor")
+	m.normal_scale = 0.8
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE * 2.5
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = _mm
 	mmi.material_override = m
@@ -194,8 +203,11 @@ func refresh() -> void:
 	for i in mass.size():
 		var c := center(i)
 		var h := maxf(mass[i] * 0.012, 0.0001)
-		_mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3(1, h, 1)), Vector3(c.x, 0.015 + h / 2.0, c.y)))
+		# Empty cells collapse to nothing so the bricks show through.
+		var w := 1.0 if mass[i] > 0.01 else 0.0
+		_mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3(w, h, w)), Vector3(c.x, 0.015 + h / 2.0, c.y)))
 		var wet := clampf(moist[i] - 0.14, 0.0, 1.0)
-		var col := Color(0.8, 0.63, 0.27).lerp(Color(0.52, 0.4, 0.16), wet)
+		# Per-cell shade so a spread layer does not read as tiles.
+		var col := Color(0.78, 0.64, 0.36).darkened(0.08 * float((i * 7919) % 5) / 4.0).lerp(Color(0.5, 0.4, 0.2), wet)
 		col = col.lerp(Color(0.45, 0.55, 0.3), soaked[i] * 0.8)
 		_mm.set_instance_color(i, col)

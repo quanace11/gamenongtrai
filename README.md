@@ -3,7 +3,9 @@
 Prototype Godot 4 cho game nông trại lúa nước góc nhìn thứ nhất, giúp người thành phố và khách quốc tế trải nghiệm một vụ lúa ở làng quê Việt Nam: lội bùn, cuốc đất, cấy lúa theo nhịp, giữ nước, thả vịt, gặt, đập lúa và "chạy thóc" khi mưa rào ập tới.
 
 - Thiết kế: [docs/GDD.md](docs/GDD.md), cuối file có bảng những gì prototype đã làm và chưa làm.
-- Không có asset ngoài: hình khối low-poly và âm thanh (ếch nhái, bùn, liềm, sấm…) đều tạo bằng GDScript khi khởi động.
+- Đồ họa dùng asset miễn phí **CC0 của [Poly Haven](https://polyhaven.com)**: texture đất nứt nẻ, đất cuốc, bùn, cỏ, sân gạch đỏ, mái ngói, tường vôi vàng, mái rạ; bầu trời HDRI chuyển theo giờ (sáng, hoàng hôn, đêm, giông); và mô hình thúng, rổ, thùng gỗ, nồi đất, bếp, bình tưới, đá, cây bụi. Danh sách và đường dẫn ở [assets/CREDITS.md](assets/CREDITS.md); tải lại bằng `python3 tools/fetch_assets.py`.
+- Những thứ mang dáng làng quê Việt mà thư viện CC0 chưa có (lũy tre, chuối, cau, dừa, khóm lúa, trâu, lợn, vịt cỏ, núi đá vôi kiểu Ninh Bình, ruộng bậc xa) được dựng bằng code và shader: lúa và cỏ đung đưa theo gió, nước ruộng phản chiếu trời và gợn khi mưa.
+- Âm thanh (ếch nhái, bùn, liềm, sấm…) vẫn được tổng hợp bằng GDScript khi khởi động.
 
 ## Chạy thử
 
@@ -11,7 +13,9 @@ Prototype Godot 4 cho game nông trại lúa nước góc nhìn thứ nhất, gi
 2. Mở Godot, chọn **Import** và trỏ tới `project.godot` trong thư mục này.
 3. Bấm **Run** (F5).
 
-Hoặc chạy bằng dòng lệnh: `godot --path .`
+Hoặc chạy bằng dòng lệnh: lần đầu `godot --path . --import` để import asset, sau đó `godot --path .`
+
+Lần đầu mở, Godot sẽ import texture và mô hình (khoảng 45 MB) trong vài chục giây. Nên chạy bằng renderer mặc định **Forward+** (cần card hỗ trợ Vulkan) để có SSAO, glow và bóng mềm; máy yếu có thể thêm `--rendering-driver opengl3` để chạy chế độ Compatibility.
 
 Khi chạy từ editor (bản debug), các phím `F6`–`F9` cho phép nhảy giai đoạn: `F6` làm đất và mạ xong, `F7` đã cấy, `F8` lúa chín, `F9` gặt xong và có thóc trong thùng.
 
@@ -20,6 +24,7 @@ Khi chạy từ editor (bản debug), các phím `F6`–`F9` cho phép nhảy gi
 ```sh
 godot --path . -- --autotest                 # chơi tự động hết một vụ, in PASS/FAIL, thoát mã 1 nếu lỗi
 godot --path . -- --autotest --shots=/tmp/s  # kèm ảnh chụp màn hình từng giai đoạn
+godot --path . -- --tour --shots=/tmp/s      # chỉ chụp ảnh cảnh vật ở các giai đoạn và giờ khác nhau
 ```
 
 ## Điều khiển
@@ -56,7 +61,11 @@ scripts/courtyard.gd   sân phơi thóc, bạt, mưa
 scripts/ducks.gd       đàn vịt chạy đồng
 scripts/player.gd      góc nhìn thứ nhất, lội bùn, sức lực
 scripts/tools.gd       dụng cụ cầm tay và động tác
-scripts/world.gd       cảnh vật dựng bằng code
+scripts/world.gd       cảnh vật: nhà, sân, mương, ao, chuồng trại, đồ vật, núi
+scripts/flora.gd       tre, chuối, cau, dừa, cỏ (dựng bằng code)
+scripts/assets.gd      nạp texture/mô hình Poly Haven
+shaders/               trời HDRI, nước, đất ruộng, mặt đất xa, lá đung đưa
+assets/                texture, HDRI, mô hình CC0 (xem CREDITS.md)
 scripts/layout.gd      toạ độ mọi thứ trên bản đồ
 scripts/hud.gd         giao diện
 scripts/audio.gd       âm thanh tổng hợp

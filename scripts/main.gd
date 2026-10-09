@@ -30,7 +30,8 @@ var transplant
 var camera: Camera3D
 var sun: DirectionalLight3D
 var env: Environment
-var sky_mat: ProceduralSkyMaterial
+var sky_mat: ShaderMaterial
+var moon: DirectionalLight3D
 var rain: CPUParticles3D
 var smoke: CPUParticles3D
 var hoe_mark: MeshInstance3D
@@ -121,7 +122,7 @@ func _ready() -> void:
 	hoe_mark = MeshInstance3D.new()
 	hoe_mark.mesh = hm
 	var hmat := StandardMaterial3D.new()
-	hmat.albedo_color = Color(1, 1, 1, 0.18)
+	hmat.albedo_color = Color(1, 1, 0.85, 0.1)
 	hmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	hmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	hoe_mark.material_override = hmat
@@ -133,31 +134,62 @@ func _ready() -> void:
 	_refresh_nursery()
 	hud.tool("tay")
 	player.update(0.0, Vector2.ZERO, false, field, 0.0)
+	_update_sky()
 	if autotest:
 		_run_autotest()
+	elif "--tour" in OS.get_cmdline_user_args():
+		_run_tour()
 
 
 func _setup_environment() -> void:
-	sky_mat = ProceduralSkyMaterial.new()
+	# Sky: four CC0 HDRI panoramas blended by time of day and storm.
+	sky_mat = ShaderMaterial.new()
+	sky_mat.shader = preload("res://shaders/sky.gdshader")
+	sky_mat.set_shader_parameter("day_tex", load("res://assets/hdri/kloofendal_48d_partly_cloudy_puresky_2k.hdr"))
+	sky_mat.set_shader_parameter("dusk_tex", load("res://assets/hdri/qwantani_sunset_puresky_1k.hdr"))
+	sky_mat.set_shader_parameter("night_tex", load("res://assets/hdri/qwantani_night_puresky_1k.hdr"))
+	sky_mat.set_shader_parameter("storm_tex", load("res://assets/hdri/kloofendal_overcast_puresky_1k.hdr"))
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
+	sky.process_mode = Sky.PROCESS_MODE_REALTIME
+	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	env = Environment.new()
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.tonemap_exposure = 0.85
-	env.ambient_light_sky_contribution = 0.6
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	env.tonemap_exposure = 1.0
+	env.tonemap_white = 6.0
+	env.ssao_enabled = true
+	env.ssao_radius = 1.2
+	env.ssao_intensity = 1.6
+	env.glow_enabled = true
+	env.glow_intensity = 0.35
+	env.glow_bloom = 0.04
+	env.glow_hdr_threshold = 1.3
 	env.fog_enabled = true
-	env.fog_density = 0.004
-	env.fog_sky_affect = 0.3
+	env.fog_density = 0.0018
+	env.fog_aerial_perspective = 0.25
+	env.fog_sky_affect = 0.15
+	env.adjustment_enabled = true
+	env.adjustment_saturation = 1.08
+	env.adjustment_contrast = 1.04
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 60.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+	sun.directional_shadow_max_distance = 80.0
+	sun.light_angular_distance = 0.6
+	sun.shadow_blur = 1.2
 	add_child(sun)
+	moon = DirectionalLight3D.new()
+	moon.light_color = Color(0.6, 0.7, 1.0)
+	moon.rotation = Vector3(-1.0, 0.8, 0)
+	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	add_child(moon)
 
 
 func _setup_particles() -> void:
@@ -761,23 +793,28 @@ func _update_sky() -> float:
 	var daylight := clampf(elev * 3.0 + 0.35, 0.0, 1.0)
 	var dusk := clampf(1.0 - absf(elev - 0.08) / 0.27, 0.0, 1.0) if (elev > -0.15 and elev < 0.35) else 0.0
 	var s: float = storm.level
-	var top := Color("0a1224").lerp(Color("3d7fc4"), daylight).lerp(Color("3c434c"), s * 0.85)
 	var horizon := Color("1a2236").lerp(Color("b8dcf0"), daylight).lerp(Color("f4b88a"), dusk * 0.6).lerp(Color("4a525a"), s * 0.85)
 	var flash: float = storm.lightning
 	if flash > 0.0:
 		horizon = horizon.lerp(Color("dde6ff"), flash)
-		top = top.lerp(Color("dde6ff"), flash)
-	sky_mat.sky_top_color = top
-	sky_mat.sky_horizon_color = horizon
-	sky_mat.ground_horizon_color = horizon
-	sky_mat.ground_bottom_color = top.darkened(0.5)
-	env.fog_light_color = horizon
-	env.fog_density = lerpf(0.004, 0.02, s)
-	env.ambient_light_energy = (0.2 + 0.45 * daylight) * (1.0 - 0.5 * s) + flash * 1.0
+	sky_mat.set_shader_parameter("daylight", daylight)
+	sky_mat.set_shader_parameter("dusk", dusk)
+	sky_mat.set_shader_parameter("storm", s)
+	sky_mat.set_shader_parameter("flash", flash)
+	sky_mat.set_shader_parameter("drift", fmod(real_t * 0.0005, 1.0))
+	env.fog_light_color = horizon.darkened(0.15)
+	env.fog_density = lerpf(0.0018, 0.02, s)
+	env.ambient_light_energy = (0.25 + 0.75 * daylight) * (1.0 - 0.4 * s) + flash * 1.5
+	# Eyes adapt: lift exposure at night so the farm stays playable by moonlight.
+	env.tonemap_exposure = lerpf(2.4, 1.0, smoothstep(0.0, 0.5, daylight))
 	var dir := Vector3(cos(ang) * 60.0, maxf(elev, 0.08) * 70.0, -25.0)
 	sun.look_at_from_position(dir, Vector3.ZERO, Vector3.UP)
-	sun.light_energy = 1.1 * clampf(elev * 2.5, 0.0, 1.0) * (1.0 - 0.85 * s)
-	sun.light_color = Color("fff2d8").lerp(Color("f4b88a"), dusk * 0.5)
+	sun.light_energy = 1.6 * clampf(elev * 2.5, 0.0, 1.0) * (1.0 - 0.8 * s)
+	sun.light_color = Color("fff1dc").lerp(Color("ffb070"), dusk * 0.7)
+	sun.shadow_enabled = sun.light_energy > 0.02
+	moon.light_energy = 0.12 * (1.0 - daylight) * (1.0 - s)
+	RenderingServer.global_shader_parameter_set("wind_gust", 1.0 + s * 2.5)
+	RenderingServer.global_shader_parameter_set("rain_amount", 1.0 if raining else 0.0)
 	return maxf(0.0, elev) * (1.0 - s) * (0.0 if raining else 1.0)
 
 
@@ -1154,6 +1191,82 @@ func _expect(cond: bool, what: String) -> void:
 		get_tree().quit(1)
 
 
+# godot --path . -- --tour --shots=DIR
+# Screenshots of the farm at different stages and times of day, for
+# checking the look without playing a whole season.
+func _set_time(h: float) -> void:
+	minutes = float(day() - 1) * 1440.0 + h * 60.0
+	await _wait(0.6)
+
+
+func _hide_hud(hidden: bool) -> void:
+	hud.visible = not hidden
+
+
+func _look_at(x: float, z: float, tx: float, tz: float, pitch: float) -> void:
+	await _look(x, z, atan2(-(tx - x), -(tz - z)), pitch)
+
+
+func _run_tour() -> void:
+	_on_play()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_hide_hud(true)
+	await _look_at(-3, -10.5, 2, 2, -0.15)
+	await _set_time(7.0)
+	await _shot("tour-1-dry-field")
+	await _look_at(6, -11, 0, -24, -0.05)
+	await _set_time(9.0)
+	await _shot("tour-2-house")
+	_debug_skip_prep()
+	_debug_plant_all()
+	field.water = 4.0
+	field.growth_day = 2
+	field.rice_dirty = true
+	await _look_at(-7.5, 9.0, 2, -4, -0.18)
+	await _set_time(10.0)
+	await _shot("tour-3-young-rice")
+	await _look_at(-14.5, -4, -21, -11, -0.15)
+	await _set_time(11.0)
+	await _shot("tour-4-pond")
+	field.growth_day = 8
+	field.rice_dirty = true
+	await _look_at(7.5, 3, -4, -1, -0.12)
+	await _set_time(16.8)
+	await _shot("tour-5-ripe-golden-hour")
+	await _look_at(0, -6, 0, 0, -0.35)
+	await _set_time(12.0)
+	_select_tool("liem")
+	await _shot("tour-6-sickle")
+	stage = "drying"
+	court.pour(140.0)
+	for k in 4:
+		for i in court.mass.size():
+			court.spread(i)
+	await _look_at(0.5, -11.5, 0, -19, -0.3)
+	await _set_time(12.5)
+	await _shot("tour-7-courtyard")
+	storm.phase = "warning"
+	storm.t = 60.0
+	storm.level = 0.85
+	await _wait(1.0)
+	await _shot("tour-8-storm")
+	storm.phase = "rain"
+	storm.level = 1.0
+	raining = true
+	await _look_at(0, -12, 0, 0, -0.15)
+	await _wait(2.0)
+	await _shot("tour-9-rain")
+	storm.phase = "done"
+	storm.level = 0.0
+	raining = false
+	await _look_at(7, -2, -8, -2, -0.05)
+	await _set_time(17.85)
+	await _shot("tour-10-sunset")
+	await _set_time(22.0)
+	await _shot("tour-11-night")
+	get_tree().quit(0)
+
+
 func _run_autotest() -> void:
 	await _wait(0.5)
 	await _shot("0-start")
@@ -1198,7 +1311,7 @@ func _run_autotest() -> void:
 	var keys := [KEY_SPACE, KEY_A, KEY_S, KEY_D]
 	while transplant.next < 24:
 		var n: Dictionary = transplant.notes[transplant.next]
-		if absf(transplant.t - n.time) < 0.03:
+		if transplant.t >= n.time - 0.03:
 			transplant.key(keys[n.k])
 		await get_tree().process_frame
 	await _shot("2-transplant")

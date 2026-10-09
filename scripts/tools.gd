@@ -3,6 +3,7 @@
 extends Node3D
 
 const W = preload("res://scripts/world.gd")
+const A = preload("res://scripts/assets.gd")
 
 const TOOLS := [
 	{"id": "tay", "key": KEY_1, "name": "Tay không", "en": "Hands"},
@@ -55,7 +56,7 @@ func _ready() -> void:
 	scoop.bottom_radius = 0.12
 	scoop.height = 0.25
 	scoop.cap_top = false
-	_part(models.gau, scoop, BAMBOO, Vector3(0, -0.05, -0.6), Vector3(1.3, 0, 0)).material_override = W.mat(BAMBOO, true)
+	_part(models.gau, scoop, BAMBOO, Vector3(0, -0.05, -0.6), Vector3(1.3, 0, 0)).material_override = A.pbr("weathered_planks", 0.35, false, Color(1.3, 1.15, 0.8), true)
 	_part(models.gau, _cyl(0.015, 0.9), BAMBOO, Vector3(0, 0.15, -0.25), Vector3(-0.9, 0, 0))
 
 	_part(models.liem, _cyl(0.02, 0.22), WOOD, Vector3(0, -0.05, -0.1), Vector3(0, 0, 0.3))
@@ -115,10 +116,28 @@ func _box(size: Vector3) -> BoxMesh:
 	return b
 
 
+static var _iron: StandardMaterial3D
+
+
+func _material(color: Color) -> Material:
+	if color == WOOD:
+		return A.pbr("weathered_planks", 0.35, false, Color(0.9, 0.7, 0.5))
+	if color == BAMBOO:
+		return A.pbr("weathered_planks", 0.35, false, Color(1.3, 1.15, 0.8))
+	if color == IRON:
+		if _iron == null:
+			_iron = StandardMaterial3D.new()
+			_iron.albedo_color = Color(0.32, 0.3, 0.28)
+			_iron.metallic = 0.85
+			_iron.roughness = 0.45
+		return _iron
+	return W.mat(color)
+
+
 func _part(parent: Node3D, mesh: Mesh, color: Color, pos: Vector3, rot := Vector3.ZERO) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	mi.material_override = W.mat(color)
+	mi.material_override = _material(color)
 	mi.position = pos
 	mi.rotation = rot
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
