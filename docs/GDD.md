@@ -121,7 +121,7 @@ Hệ thống được thiết kế theo vòng lặp tài nguyên khép kín, nơ
 
 ## 3. Phạm vi bản prototype (vertical slice)
 
-Bản prototype chạy trên trình duyệt (Three.js, không cần build) và tập trung vào một vụ lúa hoàn chỉnh trên **một thửa ruộng 16 m × 16 m**. Thời gian trong game chạy 4 phút game / 1 giây thực; ngủ ở võng để qua đêm.
+Bản prototype làm bằng **Godot 4.3 (GDScript)**, toàn bộ hình khối và âm thanh tạo bằng code, và tập trung vào một vụ lúa hoàn chỉnh trên **một thửa ruộng 16 m × 16 m**. Thời gian trong game chạy 4 phút game / 1 giây thực; ngủ ở võng để qua đêm.
 
 | Hạng mục GDD | Trạng thái trong prototype |
 |---|---|
