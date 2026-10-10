@@ -18,7 +18,7 @@ const VARIANTS := [2, 2, 1] # meshes per level of detail
 # lod 0 ends, lod 1 ends (metres). Kept short: with 3 x 3 hills per clump
 # a ripe paddy holds ~5,600 hills, and every lod-0 hill (~2.2 k triangles)
 # is drawn in the depth prepass, the colour pass and the shadow cascades.
-const BASE_RANGES := [3.0, 8.0]
+const BASE_RANGES := [2.5, 8.0]
 # Dithered fade-out width of lod 0 and lod 1 (metres either side of the end).
 const MARGINS := [1.0, 2.0]
 
@@ -191,7 +191,9 @@ func _set_ranges(mms: Array) -> void:
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if lod == 0 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		if i == 7: # cheap lod-2 shadow caster for the middle band
 			mmi.visibility_range_begin = ranges[0]
-			mmi.visibility_range_end = ranges[1] + MARGINS[1]
+			# out to 6 m only: a ring of shadow casters costs its area in
+			# every cascade, and farther out the shading is lost in the haze
+			mmi.visibility_range_end = ranges[1] - MARGINS[1]
 			mmi.visibility_range_end_margin = 0.0
 			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY

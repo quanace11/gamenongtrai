@@ -194,7 +194,7 @@ static func hill(s: float, seed: int, lod := 0) -> ArrayMesh:
 	var young := 1.0 - smoothstep(0.0, 0.2, s) # transplant seedlings
 	var tiller_n := int(round(lerpf(3.0, 15.0, smoothstep(0.02, 0.45, s))))
 	if lod == 1:
-		tiller_n = maxi(3, int(round(tiller_n * 0.7)))
+		tiller_n = maxi(3, int(round(tiller_n * 0.6)))
 	elif lod == 2:
 		tiller_n = maxi(3 if young > 0.5 else 2, int(round(tiller_n * 0.4)))
 	var collar := 0.045 + 0.59 * pow(smoothstep(0.0, 0.68, s), 2.2) # flag-leaf collar height
