@@ -1196,19 +1196,8 @@ func _step(dt: float) -> void:
 	if ducks.count_outside_pen() > 5:
 		duck_forage_min += dt_min
 
-	# ambience: frogs and crickets at night, birds by day
-	amb_t -= dt
-	if amb_t <= 0.0:
-		amb_t = 0.12
-		var h := hour()
-		var night := h < 5.0 or h >= 18.5
-		var near_water := Vector2(player.pos.x, player.pos.z).length() < 25.0
-		if (night or raining) and near_water and randf() < 0.6:
-			audio.play("frog", -8.0, randf_range(0.9, 1.1))
-		if night and randf() < 0.3:
-			audio.play("cricket", -10.0)
-		if not night and not raining and randf() < 0.04:
-			audio.play("bird", -10.0, randf_range(0.9, 1.2))
+	# ambience beds, animals and village sounds follow the hour (audio.gd)
+	audio.update(dt, self)
 
 	_update_visuals(dt)
 	hud.vignette.color.a = 0.35 if player.stamina < 20.0 else 0.0
