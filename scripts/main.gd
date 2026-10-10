@@ -71,6 +71,14 @@ var target = null # {label, act, repeat}
 var interactables: Array = []
 var amb_t := 0.0
 var autotest := false
+var touring := false
+var mouse_sens := 1.0 # multiplier on the base look speed
+var invert_y := false
+var _skip_motion := 0
+const SETTINGS_PATH := "user://settings.cfg"
+const KEY_LOOK_YAW := 1.8 # rad/s with the arrow keys (touchpad / accessibility fallback)
+const KEY_LOOK_PITCH := 1.2
+const TRANSPLANT_LOOK := 0.9 # rad either side of the row while transplanting
 
 
 func day() -> int:
@@ -84,6 +92,7 @@ func hour() -> float:
 func _ready() -> void:
 	randomize()
 	autotest = "--autotest" in OS.get_cmdline_user_args()
+	touring = "--tour" in OS.get_cmdline_user_args()
 	audio = AudioScript.new()
 	add_child(audio)
 	_setup_environment()
@@ -100,7 +109,7 @@ func _ready() -> void:
 	camera = Camera3D.new()
 	camera.fov = 72
 	camera.near = 0.05
-	camera.far = 400
+	camera.far = 1500
 	add_child(camera)
 	camera.make_current()
 	player = PlayerScript.new(camera, audio)
@@ -112,6 +121,10 @@ func _ready() -> void:
 	add_child(hud)
 	hud.play_pressed.connect(_on_play)
 	hud.new_season_pressed.connect(func(): get_tree().reload_current_scene())
+	hud.resume_pressed.connect(_set_paused.bind(false))
+	hud.sens_changed.connect(_on_sens_changed)
+	hud.invert_changed.connect(_on_invert_changed)
+	_load_settings()
 	transplant = TransplantScript.new()
 	add_child(transplant)
 	transplant.setup(field, player, tools, hud, audio)
@@ -522,22 +535,27 @@ func _noop() -> void:
 	pass
 
 
+# What the crosshair points at: the thing whose middle is closest to the
+# view ray, within about half a metre of it (more forgiving up close).
 func _find_interaction():
-	var fw: Vector3 = player.forward()
+	var eye: Vector3 = camera.global_position
+	var look: Vector3 = -camera.global_transform.basis.z
 	var best = null
-	var bd := INF
+	var best_score := INF
 	for it in interactables:
-		var d := Vector2(it.pos.x - player.pos.x, it.pos.y - player.pos.z)
-		var dist := d.length()
+		var dist := Vector2(it.pos.x - player.pos.x, it.pos.y - player.pos.z).length()
 		if dist > it.r:
 			continue
-		if dist > 0.9 and (d.x * fw.x + d.y * fw.z) / dist < 0.3:
+		var aim_at := Vector3(it.pos.x, L.ground_y(it.pos.x, it.pos.y) + 0.6, it.pos.y)
+		var ang := look.angle_to(aim_at - eye)
+		if dist > 0.9 and ang > atan2(0.5, dist) + 0.08:
 			continue
 		var label: String = it.label.call()
 		if label == "":
 			continue
-		if dist < bd:
-			bd = dist
+		var score := ang + dist * 0.05
+		if score < best_score:
+			best_score = score
 			best = {"label": label, "act": it.act, "repeat": it.repeat}
 	if best == null:
 		best = _field_interaction()
@@ -560,6 +578,9 @@ func _select_tool(id: String) -> void:
 
 func _start_transplant() -> void:
 	mode = "transplant"
+	mouse_left = false
+	mouse_right = false
+	e_held = false
 	_select_tool("tay")
 	hud.set_prompt("")
 	transplant.start()
@@ -645,9 +666,24 @@ func _refresh_nursery() -> void:
 
 
 # ---------------------------------------------------------------- tools
+# Where the crosshair meets the ground, kept within arm's reach `dist`
+# (plus a little slack), so tools hit what the player is looking at.
 func _aim(dist: float) -> Vector2:
 	var fw: Vector3 = player.forward()
-	return Vector2(player.pos.x + fw.x * dist, player.pos.z + fw.z * dist)
+	var fallback := Vector2(player.pos.x + fw.x * dist, player.pos.z + fw.z * dist)
+	var o: Vector3 = camera.global_position
+	var d: Vector3 = -camera.global_transform.basis.z
+	if d.y > -0.05:
+		return fallback
+	var gy: float = L.ground_y(fallback.x, fallback.y)
+	var p := o + d * ((gy - o.y) / d.y)
+	var off := Vector2(p.x - player.pos.x, p.z - player.pos.z)
+	var reach := dist + 0.6
+	if off.length() > reach:
+		off = off.normalized() * reach
+	elif off.length() < 0.4:
+		return fallback
+	return Vector2(player.pos.x, player.pos.z) + off
 
 
 func _use_tool(button: int) -> void:
@@ -715,59 +751,176 @@ func _use_tool(button: int) -> void:
 func _on_play() -> void:
 	hud.start_screen.visible = false
 	playing = true
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_capture_mouse()
 	hud.log_msg("Sáng sớm ngày đầu vụ. Ruộng khô nứt nẻ đang chờ bạn.")
 	hud.log_msg("Cầm cuốc (phím 2), xuống ruộng, chuột trái để cuốc. Mẹo: dẫn nước vào trước thì đất mềm hơn.")
+
+
+func _capture_mouse() -> void:
+	if autotest or touring:
+		return
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	# The first motion event after capturing can carry the jump from where
+	# the cursor was to the window centre.
+	_skip_motion = 1
 
 
 func _set_paused(p: bool) -> void:
 	paused = p
 	hud.pause_screen.visible = p
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if p else Input.MOUSE_MODE_CAPTURED
+	mouse_left = false
+	mouse_right = false
+	e_held = false
+	if p:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		_save_settings()
+		_capture_mouse()
+
+
+func _notification(what: int) -> void:
+	# Alt-Tab or clicking another window: pause and give the cursor back.
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and playing and not paused and mode != "summary" and not autotest and not touring:
+		_set_paused(true)
+
+
+func _load_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SETTINGS_PATH) == OK:
+		mouse_sens = clampf(float(cfg.get_value("mouse", "sensitivity", mouse_sens)), 0.2, 3.0)
+		invert_y = bool(cfg.get_value("mouse", "invert_y", invert_y))
+	hud.set_mouse_settings(mouse_sens, invert_y)
+
+
+func _save_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("mouse", "sensitivity", mouse_sens)
+	cfg.set_value("mouse", "invert_y", invert_y)
+	cfg.save(SETTINGS_PATH)
+
+
+func _on_sens_changed(v: float) -> void:
+	mouse_sens = v # saved when the pause menu closes
+
+
+func _on_invert_changed(v: bool) -> void:
+	invert_y = v
+	_save_settings()
+
+
+# Mouse look and mouse buttons are read in _input, before the GUI, so no
+# HUD control can swallow them while the cursor is captured.
+func _input(event: InputEvent) -> void:
+	if not playing or paused or mode == "summary":
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			# Lost capture (e.g. after Alt-Tab): the click only takes it back.
+			if mb.pressed and not autotest and not touring:
+				_capture_mouse()
+				get_viewport().set_input_as_handled()
+			return
+		match mb.button_index:
+			MOUSE_BUTTON_LEFT:
+				mouse_left = mb.pressed
+				# Bare hands: the left button uses whatever is in the crosshair.
+				if mode == "walk" and tools.current == "tay":
+					if mb.pressed:
+						_interact_pressed()
+					else:
+						e_held = false
+			MOUSE_BUTTON_RIGHT:
+				mouse_right = mb.pressed
+			MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN:
+				if mb.pressed and mode == "walk":
+					_cycle_tool(-1 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1)
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion:
+		if Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+			return
+		if _skip_motion > 0:
+			_skip_motion -= 1
+			return
+		# screen_relative is in screen pixels, unaffected by the canvas
+		# stretch, so the feel does not change with window size.
+		var rel: Vector2 = (event as InputEventMouseMotion).screen_relative
+		player.look(rel * mouse_sens, invert_y)
+		if mode == "transplant":
+			_clamp_transplant_view()
+		get_viewport().set_input_as_handled()
+
+
+# Pressing "use" (E, or the left button with bare hands).
+func _interact_pressed() -> void:
+	e_held = true
+	e_timer = 0.45
+	if target != null:
+		target.act.call()
+
+
+# While transplanting the farmer faces the row but may glance around.
+func _clamp_transplant_view() -> void:
+	var off: float = angle_difference(PI, player.yaw)
+	player.yaw = wrapf(PI + clampf(off, -TRANSPLANT_LOOK, TRANSPLANT_LOOK), -PI, PI)
+	player.pitch = clampf(player.pitch, -1.3, 0.1)
+
+
+# Arrow keys look around too: many laptop touchpads ignore the pointer
+# while a key such as W is held.
+func _keyboard_look(dt: float) -> void:
+	var v := Vector2(
+		float(Input.is_physical_key_pressed(KEY_RIGHT)) - float(Input.is_physical_key_pressed(KEY_LEFT)),
+		float(Input.is_physical_key_pressed(KEY_DOWN)) - float(Input.is_physical_key_pressed(KEY_UP)))
+	if v == Vector2.ZERO:
+		return
+	player.look(Vector2(v.x * KEY_LOOK_YAW, v.y * KEY_LOOK_PITCH) * dt / player.LOOK_SPEED, invert_y)
+	if mode == "transplant":
+		_clamp_transplant_view()
+
+
+func _cycle_tool(step: int) -> void:
+	var ids := []
+	for t in ToolsScript.TOOLS:
+		ids.append(t.id)
+	var i := ids.find(tools.current)
+	_select_tool(ids[posmod(i + step, ids.size())])
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not playing or mode == "summary":
 		return
+	if not (event is InputEventKey):
+		return
+	var ek := event as InputEventKey
+	# Physical keys, like WASD movement: the same place on every layout,
+	# and not rewritten by Vietnamese typing tools such as Unikey (Telex).
+	var k: int = ek.physical_keycode if ek.physical_keycode != KEY_NONE else ek.keycode
 	if paused:
-		if event is InputEventMouseButton and event.pressed:
+		if ek.pressed and not ek.echo and k == KEY_ESCAPE:
 			_set_paused(false)
 		return
-	if event is InputEventMouseMotion and mode != "transplant":
-		var rel: Vector2 = event.relative
-		if absf(rel.x) < 250.0 and absf(rel.y) < 250.0:
-			player.look(rel)
-	elif event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			mouse_left = event.pressed
-		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			mouse_right = event.pressed
-	elif event is InputEventKey:
-		var k: int = event.keycode
-		if not event.pressed:
-			if k == KEY_E:
-				e_held = false
-			return
-		if event.echo:
-			return
-		if k == KEY_ESCAPE:
-			_set_paused(true)
-			return
-		if mode == "transplant":
-			transplant.key(k)
-			return
-		for t in ToolsScript.TOOLS:
-			if k == t.key:
-				_select_tool(t.id)
+	if not ek.pressed:
 		if k == KEY_E:
-			e_held = true
-			e_timer = 0.45
-			if target != null:
-				target.act.call()
-		elif k == KEY_Q:
-			ducks.whistle()
-		elif OS.is_debug_build() and k >= KEY_F6 and k <= KEY_F9:
-			debug_skip(k)
+			e_held = false
+		return
+	if ek.echo:
+		return
+	if k == KEY_ESCAPE:
+		_set_paused(true)
+		return
+	if mode == "transplant":
+		transplant.key(k)
+		return
+	for t in ToolsScript.TOOLS:
+		if k == t.key:
+			_select_tool(t.id)
+	if k == KEY_E:
+		_interact_pressed()
+	elif k == KEY_Q:
+		ducks.whistle()
+	elif OS.is_debug_build() and k >= KEY_F6 and k <= KEY_F9:
+		debug_skip(k)
 
 
 func _move_input() -> Vector2:
@@ -956,6 +1109,9 @@ func _clock_text() -> String:
 
 func _show_summary() -> void:
 	mode = "summary"
+	mouse_left = false
+	mouse_right = false
+	e_held = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var soaked: float = court.soaked_fraction()
 	var grade := "Gạo loại 1 — hạt trong, thơm"
@@ -994,8 +1150,11 @@ func _step(dt: float) -> void:
 	var sun_f := _update_sky()
 	_update_storm(dt)
 
+	_keyboard_look(dt)
 	var load_frac: float = inv.sheaves / float(CARRY)
 	var moved: float = player.update(dt, _move_input(), Input.is_physical_key_pressed(KEY_SHIFT), field, load_frac)
+	# Shaders bend grass and ripple water around the player's feet.
+	RenderingServer.global_shader_parameter_set("player_pos", Vector3(player.pos.x, player.y, player.pos.z))
 	var pole_active: bool = tools.current == "sao" and mouse_left and mode == "walk"
 	tools.animate(dt, player.moving, player.bob_phase, real_t, pole_active, load_frac)
 
@@ -1016,6 +1175,7 @@ func _step(dt: float) -> void:
 			elif tools.current != "sao":
 				_use_tool(MOUSE_BUTTON_RIGHT if mouse_right else MOUSE_BUTTON_LEFT)
 		target = _find_interaction()
+		hud.set_crosshair("use" if target != null else "aim")
 		if target != null:
 			hud.set_prompt(target.label)
 		if e_held and target != null and target.repeat:
@@ -1162,6 +1322,10 @@ func _shot(name: String) -> void:
 		if a.begins_with("--shots="):
 			await RenderingServer.frame_post_draw
 			get_viewport().get_texture().get_image().save_png(a.substr(8) + "/" + name + ".png")
+			print("SHOT %s prims=%d draws=%d fps=%d" % [name,
+				Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME),
+				Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+				Performance.get_monitor(Performance.TIME_FPS)])
 
 
 func _wait(sec: float) -> void:
@@ -1218,6 +1382,10 @@ func _run_tour() -> void:
 	await _set_time(9.0)
 	await _shot("tour-2-house")
 	_debug_skip_prep()
+	field.water = 5.0
+	await _look_at(-7.5, 7.5, 8, -6, -0.1)
+	await _set_time(8.0)
+	await _shot("tour-12-flooded-mirror")
 	_debug_plant_all()
 	field.water = 4.0
 	field.growth_day = 2
@@ -1237,6 +1405,16 @@ func _run_tour() -> void:
 	await _set_time(12.0)
 	_select_tool("liem")
 	await _shot("tour-6-sickle")
+	_select_tool("tay")
+	await _look_at(-9.0, -3, -11, -3, -0.55)
+	await _shot("tour-13-hands")
+	await _look_at(12, -9, 20, -14, -0.25)
+	await _set_time(11.0)
+	await _shot("tour-14-lawn")
+	await _look_at(0, 9.3, 0, 60, 0.03)
+	await _set_time(9.5)
+	await _shot("tour-15-far-karst")
+	await _set_time(12.0)
 	stage = "drying"
 	court.pour(140.0)
 	for k in 4:

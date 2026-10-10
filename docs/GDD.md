@@ -121,7 +121,7 @@ Hệ thống được thiết kế theo vòng lặp tài nguyên khép kín, nơ
 
 ## 3. Phạm vi bản prototype (vertical slice)
 
-Bản prototype làm bằng **Godot 4.3 (GDScript)**, dùng texture, bầu trời HDRI và mô hình CC0 của Poly Haven cho bề mặt và đồ vật (cây cối làng quê, con vật và âm thanh vẫn tạo bằng code), và tập trung vào một vụ lúa hoàn chỉnh trên **một thửa ruộng 16 m × 16 m**. Thời gian trong game chạy 4 phút game / 1 giây thực; ngủ ở võng để qua đêm.
+Bản prototype làm bằng **Godot 4.6 (GDScript)**, dùng texture, bầu trời HDRI và mô hình CC0 của Poly Haven cho bề mặt và đồ vật (cây cối làng quê, con vật và âm thanh vẫn tạo bằng code), và tập trung vào một vụ lúa hoàn chỉnh trên **một thửa ruộng 16 m × 16 m**. Thời gian trong game chạy 4 phút game / 1 giây thực; ngủ ở võng để qua đêm.
 
 | Hạng mục GDD | Trạng thái trong prototype |
 |---|---|

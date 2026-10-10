@@ -6,7 +6,7 @@ config_version=5
 config/name="Ruong Lua Nuoc"
 config/description="First-person wet-rice farming in a Vietnamese village"
 run/main_scene="res://scenes/main.tscn"
-config/features=PackedStringArray("4.3", "Forward Plus")
+config/features=PackedStringArray("4.6", "Forward Plus")
 
 [display]
 
@@ -30,6 +30,18 @@ wind_gust={
 "value": 1.0
 }
 rain_amount={
+"type": "float",
+"value": 0.0
+}
+wind_dir={
+"type": "vec2",
+"value": Vector2(0.8, 0.6)
+}
+player_pos={
+"type": "vec3",
+"value": Vector3(0, -100, 0)
+}
+wetness={
 "type": "float",
 "value": 0.0
 }
