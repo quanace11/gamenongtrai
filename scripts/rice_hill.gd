@@ -76,7 +76,7 @@ static func _leaf(b: Buf, p0: Vector3, dirh: Vector3, length: float, width: floa
 		var nrm := acr.cross(tng).normalized()
 		if nrm.y < 0.0:
 			nrm = -nrm
-		nrm = _canopy(nrm, p, 0.35)
+		nrm = _canopy(nrm, p, 0.2)
 		# narrow at the collar, widest at about 40 %, long acuminate tip
 		var w := width * (0.55 + 0.45 * sin(PI * minf(f * 1.25, 1.0) * 0.5 + 0.25)) * (1.0 - pow(f, 2.2))
 		var col := Color(organ, rank, r, 0.0)
@@ -143,7 +143,7 @@ static func _ribbon(b: Buf, pts: Array, acr: Vector3, w0: float, w1: float, col:
 # whole panicle is one solid ribbon.
 static func _panicle(b: Buf, p0: Vector3, out: Vector3, ripe: float, rng: RandomNumberGenerator, lod: int) -> void:
 	var length := rng.randf_range(0.19, 0.25)
-	var bend := lerpf(0.2, 2.4, ripe) * rng.randf_range(0.8, 1.1)
+	var bend := lerpf(0.2, 2.8, ripe) * rng.randf_range(0.8, 1.1)
 	var segs := 6 if lod == 0 else 4
 	var pts := []
 	var p := p0
@@ -160,10 +160,10 @@ static func _panicle(b: Buf, p0: Vector3, out: Vector3, ripe: float, rng: Random
 		for q in pts:
 			line.append(q[0])
 		var acr := Vector3.UP.cross(out).normalized()
-		_ribbon(b, line, acr, 0.014, 0.007, Color(PANICLE, 0.0, r, 0.0))
+		_ribbon(b, line, acr, 0.02, 0.01, Color(PANICLE, 0.0, r, 0.0))
 		if lod == 1:
 			var mid: Vector3 = pts[segs / 2][1]
-			_ribbon(b, line, mid.cross(acr).normalized(), 0.012, 0.006, Color(PANICLE, 0.5, r, 0.0))
+			_ribbon(b, line, mid.cross(acr).normalized(), 0.017, 0.008, Color(PANICLE, 0.5, r, 0.0))
 		return
 	var nb := 8
 	var ga := rng.randf() * TAU
@@ -177,8 +177,8 @@ static func _panicle(b: Buf, p0: Vector3, out: Vector3, ripe: float, rng: Random
 		var radial := bt.cross(Vector3.UP if absf(bt.y) < 0.95 else Vector3.RIGHT).normalized().rotated(bt, ga)
 		var open := deg_to_rad(lerpf(36.0, 12.0, ripe))
 		var bdir := (bt * cos(open) + radial * sin(open)).normalized()
-		var bl := 0.095 * (1.0 - 0.5 * f) * rng.randf_range(0.85, 1.15)
-		var hang := Vector3.DOWN * bl * 0.4 * ripe
+		var bl := 0.12 * (1.0 - 0.5 * f) * rng.randf_range(0.85, 1.15)
+		var hang := Vector3.DOWN * bl * 0.9 * ripe
 		var line := [bp, bp + bdir * bl * 0.5 + hang * 0.25, bp + bdir * bl + hang]
 		var col := Color(PANICLE, f, r, 0.0)
 		_ribbon(b, line, bdir.cross(radial).normalized(), 0.011, 0.009, col)
@@ -194,16 +194,17 @@ static func hill(s: float, seed: int, lod := 0) -> ArrayMesh:
 	var young := 1.0 - smoothstep(0.0, 0.2, s) # transplant seedlings
 	var tiller_n := int(round(lerpf(3.0, 15.0, smoothstep(0.02, 0.45, s))))
 	if lod == 1:
-		tiller_n = maxi(3, int(round(tiller_n * 0.65)))
+		tiller_n = maxi(3, int(round(tiller_n * 0.6)))
 	elif lod == 2:
-		tiller_n = maxi(2, int(round(tiller_n * 0.4)))
+		tiller_n = maxi(3 if young > 0.5 else 2, int(round(tiller_n * 0.4)))
 	var collar := 0.045 + 0.59 * pow(smoothstep(0.0, 0.68, s), 2.2) # flag-leaf collar height
 	var heading := s >= 0.58
 	var ripe := clampf((s - 0.62) / 0.38, 0.0, 1.0)
 	var leaf_len := lerpf(0.19, 0.42, smoothstep(0.0, 0.48, s))
-	# half width: 5 mm seedling leaves to 10-11 mm; the far lods widen to keep cover
-	var leaf_w: float = lerpf(0.0026, 0.0052, smoothstep(0.0, 0.42, s)) * [1.0, 1.35, 2.0][lod]
-	var segs: int = [6, 3, 2][lod]
+	# half width: 5 mm seedling leaves to 10-11 mm; the far lods widen to keep
+	# cover, seedlings most of all (a 5 mm leaf is sub-pixel past ~8 m)
+	var leaf_w: float = lerpf(0.0026, 0.0052, smoothstep(0.0, 0.42, s)) * [1.0, 1.15, lerpf(3.5, 2.0, smoothstep(0.0, 0.4, s))][lod]
+	var segs: int = [5, 3, 2][lod]
 	var across: int = [3, 2, 2][lod]
 	var nleaf: int = [4, 3, 2][lod]
 	if young > 0.5:
@@ -219,7 +220,7 @@ static func hill(s: float, seed: int, lod := 0) -> ArrayMesh:
 		var base := out * rng.randf_range(0.0, spread)
 		var hc := collar * rng.randf_range(0.8, 1.05)
 		if lod == 0:
-			_culm(leaves, base, axis, hc + (0.06 if heading else 0.0), 0.0035, 0.0022, rng.randf())
+			_culm(leaves, base, axis, hc + (0.12 if heading else 0.0), 0.0035, 0.0022, rng.randf())
 		elif lod == 1 and s > 0.3:
 			_culm(leaves, base, axis, hc, 0.004, 0.003, rng.randf(), 2)
 		var phi := az + rng.randf_range(-0.6, 0.6)
@@ -234,13 +235,18 @@ static func hill(s: float, seed: int, lod := 0) -> ArrayMesh:
 				ln *= lerpf(1.0, 0.55, rank) # seedling: older leaves are the short lower ones
 			var wd: float = leaf_w * (1.4 if flag else 1.0)
 			var th0 := deg_to_rad(6.0 + 18.0 * rank + rng.randf_range(-4.0, 6.0) + young * 8.0)
+			if lod == 2 and young > 0.5:
+				th0 *= 0.5 # far seedlings stand up to show their length above the water
 			var droop := deg_to_rad(lerpf(14.0, 75.0, rank) * clampf(ln / 0.42, 0.35, 1.2)) * rng.randf_range(0.7, 1.3)
 			if flag:
 				droop *= 0.4 # the flag leaf stands erect
-			_leaf(leaves, hp, dirh, ln, wd, th0, droop, rng.randf_range(-1.2, 1.2), segs, across, rank, rng.randf())
+			# lod 0: the short drooping lower leaves need one segment less
+			var sg := segs - 1 if lod == 0 and rank > 0.5 else segs
+			_leaf(leaves, hp, dirh, ln, wd, th0, droop, rng.randf_range(-1.2, 1.2), sg, across, rank, rng.randf())
 			plant_top = maxf(plant_top, hp.y + ln * cos(th0 + droop * 0.5) * 0.95)
 		if heading and ti < int(ceil(tiller_n * 0.85)):
-			var neck := base + axis * (hc + 0.06 + 0.05 * rng.randf())
+			# the neck clears the erect flag leaf so the panicle shows
+			var neck := base + axis * (hc + 0.12 + 0.06 * rng.randf())
 			if lod == 0:
 				_panicle(pan, neck, out, ripe, rng, 0)
 			else:
@@ -284,7 +290,7 @@ static func grain_texture() -> ImageTexture:
 	var H := 256
 	var img := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	img.fill(Color(0.5, 0.5, 0.5, 0.0))
-	var n := 11
+	var n := 8
 	for py in H:
 		for px in W:
 			var u := (px + 0.5) / W - 0.5
@@ -294,14 +300,20 @@ static func grain_texture() -> ImageTexture:
 			for g in n:
 				var side := -1.0 if g % 2 == 0 else 1.0
 				var cy := (g + 0.5) / n
-				var dy := (v - cy) / 0.05
-				var dx := (u - side * 0.2) / 0.21
+				var dy := (v - cy) / 0.052
+				var dx := (u - side * 0.26) / 0.21
 				var d := dx * dx + dy * dy
 				if d < 1.0:
 					best = 1.0
 					# lit centre, darker husk ridge and awn end
 					shade = 0.65 + 0.35 * sqrt(1.0 - d) - 0.12 * float(absf(dx) < 0.08)
-			if absf(u) < 0.035:
+				# thin pedicel from the rachis out to the grain: loose, open
+				# branches rather than a packed wheat-like spike
+				var su := u * side
+				if su > 0.0 and su < 0.12 and absf(v - (cy + 0.05 - su * 0.4)) < 0.007 and best == 0.0:
+					best = 1.0
+					shade = 0.5
+			if absf(u) < 0.025:
 				best = 1.0
 				shade = maxf(shade, 0.55)
 			if best > 0.0:

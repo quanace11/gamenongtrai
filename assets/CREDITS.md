@@ -25,8 +25,9 @@ Texture ở độ phân giải 1k (albedo, normal OpenGL, ARM). Texture của m�
 
 | Asset | Dùng cho |
 |---|---|
-| [kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) | trời ban ngày |
-| [qwantani_sunset_puresky](https://polyhaven.com/a/qwantani_sunset_puresky) | bình minh / hoàng hôn |
+| [farm_field_puresky](https://polyhaven.com/a/farm_field_puresky) | trời ban ngày: xanh nhạt, mây tích, chân trời mờ hơi nước |
+| [kloofendal_28d_misty_puresky](https://polyhaven.com/a/kloofendal_28d_misty_puresky) | sáng sớm có sương |
+| [rosendal_park_sunset_puresky](https://polyhaven.com/a/rosendal_park_sunset_puresky) | bình minh / hoàng hôn |
 | [qwantani_night_puresky](https://polyhaven.com/a/qwantani_night_puresky) | ban đêm |
 | [kloofendal_overcast_puresky](https://polyhaven.com/a/kloofendal_overcast_puresky) | trời giông |
 
@@ -56,6 +57,12 @@ Texture ở độ phân giải 1k (albedo, normal OpenGL, ARM). Texture của m�
 
 Tre, chuối, cau, dừa, cỏ, khóm lúa, trâu, lợn, vịt, núi đá vôi, nước và mặt ruộng xa được dựng bằng GDScript và shader trong `scripts/flora.gd`, `scripts/world.gd` và `shaders/`, vì thư viện CC0 chưa có các mẫu mang dáng làng quê Việt Nam. Âm thanh vẫn được tổng hợp bằng code (`scripts/audio.gd`).
 
+<!-- VEG package -->
+## Lá cắt alpha cho cây Poly Haven (gói VEG)
+
+`fern_02`, `shrub_04`, `nettle_plant`, `weed_plant_02` (CC0, Poly Haven): bản đồ Alpha 1k của chính các mẫu này được ghép vào ảnh màu thành `textures/<id>_diff_1k.png` (RGBA, 512 px) để lá được cắt đúng hình thay vì hiện thành tấm vuông. Cách làm nằm trong `tools/fetch_assets.py` (phần VEG). Cỏ sân, khóm lúa mọi giai đoạn, gốc rạ và vạt mạ được dựng bằng code trong `scripts/grass_lawn.gd`, `scripts/rice_hill.gd`, `scripts/rice_field.gd`, `scripts/flora.gd` và các shader `grass_lawn`, `grass_blade`, `rice*`.
+<!-- /VEG package -->
+
 ## Gói WORLD (địa hình, nhà, núi đá, con vật)
 
 Texture CC0 từ [Poly Haven](https://polyhaven.com) (tải lại bằng `tools/fetch_assets.py`):
@@ -76,3 +83,12 @@ Mô hình CC-BY 4.0 (phải ghi công tác giả):
 This work is based on "Realistic Pig / Porco 3D Model" (https://sketchfab.com/3d-models/realistic-pig-porco-3d-model-72834b8b47c7438c827cd0f2258ae656) by William Aleixo (https://sketchfab.com/WildMesh3DFree) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). The file was taken unchanged from a public GitHub mirror of the Sketchfab download; in the game its roughness is raised so the skin is matte.
 
 Trâu, vịt, bèo tây, núi đá vôi, tường, mái và sân gạch được dựng bằng code trong `scripts/world.gd`, `scripts/ducks.gd`, `scripts/courtyard.gd` và `shaders/` (ground, wall, roof, court, karst).
+
+## Tay người chơi và áo (gói PLAYER)
+
+| Asset | Tác giả · giấy phép | Dùng cho |
+|---|---|---|
+| [Godot XR Tools hand models](https://github.com/GodotVR/godot-xr-tools/tree/master/addons/godot-xr-tools/hands) (`Hand_Nails_R/L.gltf`, textures, grip poses) | DigitalN8m4r3 (Miodrag Sejic), dựng từ MakeHuman · [CC0 1.0](https://raw.githubusercontent.com/GodotVR/godot-xr-tools/master/addons/godot-xr-tools/hands/License.md) (bản sao ở `assets/models/hands/License.md`) | đôi tay cầm dụng cụ; màu da pha giữa hai texture realistic cho nước da nông dân rám nắng |
+| [rough_linen](https://polyhaven.com/a/rough_linen) | colormass, Rico Cilliers · CC0 | ống tay áo nâu xắn lên |
+
+Liềm, cuốc, đòn gánh, quang, lượm lúa và bó mạ được dựng bằng code trong `scripts/tools.gd`.

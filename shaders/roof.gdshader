@@ -49,7 +49,7 @@ void fragment() {
 	vec3 a = texture(tile_alb, uv).rgb;
 	// Weathered: less saturated, browner and darker than new terracotta.
 	float l = dot(a, vec3(0.3, 0.55, 0.15));
-	a = mix(vec3(l), a, 0.42) * vec3(1.05, 1.0, 0.95);
+	a = mix(vec3(l), a, 0.42) * vec3(1.1, 0.95, 0.82);
 	float down = clamp(lpos.z * eave_sign / half_len * 0.5 + 0.5, 0.0, 1.0); // 0 ridge .. 1 eave
 	float lichen = smoothstep(0.5, 0.8, fbm(lpos.xz * vec2(0.9, 0.6)));
 	a = mix(a, vec3(0.035, 0.032, 0.03), lichen * 0.65);

@@ -22,11 +22,11 @@ uniform vec4 map_rect = vec4(-40.0, -44.0, 80.0, 80.0); // x0, z0, width, depth
 uniform sampler2D grass_mask : filter_linear, repeat_disable;  // R density, G dryness, B tall, A trodden
 uniform sampler2D height_map : filter_linear, repeat_disable;  // R ground height (m)
 uniform sampler2D noise : filter_linear_mipmap, repeat_enable; // shared wind / patch noise
-uniform float blade_height = 0.16;
+uniform float blade_height = 0.2;
 uniform float blade_width = 0.0028;  // half width at the root
 uniform float far_widen = 1.6;       // extra width at fade_end, against shimmer
-uniform vec3 lush : source_color = vec3(0.22, 0.37, 0.09);
-uniform vec3 fresh : source_color = vec3(0.42, 0.53, 0.17);
+uniform vec3 lush : source_color = vec3(0.18, 0.36, 0.08);
+uniform vec3 fresh : source_color = vec3(0.38, 0.54, 0.16);
 uniform vec3 dry : source_color = vec3(0.60, 0.53, 0.31);
 uniform vec3 soil : source_color = vec3(0.30, 0.25, 0.17);
 
@@ -46,13 +46,19 @@ float rnd(uint seed) {
 void vertex() {
 	uint id = uint(INSTANCE_ID);
 	uint g = uint(grid);
+	uint bi = uint(UV2.x + 0.5); // blade within the tuft
+	uint sd = id * 23u + bi * 7u;
 	float r0 = rnd(id * 5u);
 	float r1 = rnd(id * 5u + 1u);
 	float r2 = rnd(id * 5u + 2u);
-	float r3 = rnd(id * 5u + 3u);
-	float r4 = rnd(id * 5u + 4u);
+	float r3 = rnd(sd + 3u);
+	float r4 = rnd(sd + 4u);
+	float r5 = rnd(sd + 5u);
 	float spacing = patch_size / float(grid);
 	vec2 lay = (vec2(float(id % g), float(id / g)) + vec2(r0, r1)) * spacing;
+	// the tuft's blades stand a few cm apart around the cell point
+	float ba = r5 * 6.2832;
+	lay += vec2(cos(ba), sin(ba)) * spacing * (0.2 + 0.15 * r4) * float(bi > 0u);
 	// The main camera even in shadow and probe passes, so the patch never jumps.
 	vec3 cam = MAIN_CAM_INV_VIEW_MATRIX[3].xyz;
 	vec2 rel = mod(lay - cam.xz + 0.5 * patch_size, patch_size) - 0.5 * patch_size;
@@ -67,7 +73,7 @@ void vertex() {
 	}
 	// clumpy growth: thin patches and dense tussocks
 	float clump = textureLod(noise, root * 0.09 + vec2(0.13, 0.57), 0.0).r;
-	float keep = m.r * mix(0.55, 1.15, smoothstep(0.3, 0.7, clump));
+	float keep = m.r * mix(0.9, 1.3, smoothstep(0.3, 0.7, clump));
 	float t = UV.y;                // 0 root .. 1 tip
 	float side = UV.x * 2.0 - 1.0; // -1 .. 1 across
 	bool outside = muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0;
@@ -97,7 +103,7 @@ void vertex() {
 		vec2 away = root - player_pos.xz;
 		float pd = max(length(away), 1e-3);
 		float push = (1.0 - smoothstep(0.15, 0.6, pd)) * 1.3 * step(abs(player_pos.y - ground), 0.8);
-		vec2 bend2 = face.xz * (0.25 + 0.6 * r1) + wind_dir * wstr + away / pd * push;
+		vec2 bend2 = face.xz * (0.35 + 0.8 * fract(r1 + r5)) + wind_dir * wstr + away / pd * push;
 		float blen = max(length(bend2), 1e-4);
 		float ang = min(blen, 1.4);
 		vec2 bdir = bend2 / blen;
@@ -109,15 +115,17 @@ void vertex() {
 		vec3 n = normalize(cross(across, tng));
 		n *= sign(n.y + 1e-3);
 		n = normalize(n + across * side * 0.6);            // rounded blade
-		n = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.5));   // soft, lawn-like lighting
+		// mostly up: shaded blades take the same ambient as the ground under them
+		// instead of reading as dark spikes
+		n = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.7));
 		VERTEX = vec3(root.x, ground, root.y) + across * (side * w) + pos;
 		NORMAL = n;
 		// Colour: patches of lush, fresh and dry grass; dark, earthy roots.
 		float patchy = textureLod(noise, root * 0.011 + vec2(0.31, 0.77), 0.0).r;
 		vec3 c = mix(lush, fresh, smoothstep(0.3, 0.75, patchy));
-		c = mix(c, dry, clamp(m.g + (r3 - 0.5) * 0.35 + m.a * 0.3, 0.0, 1.0));
-		c *= 0.78 + 0.4 * r2;
-		v_col = mix(mix(soil, c, 0.4) * 0.65, c, smoothstep(0.0, 0.8, t));
+		c = mix(c, dry, clamp(m.g * 0.75 + (r3 - 0.5) * 0.3 + m.a * 0.3 - 0.05, 0.0, 1.0));
+		c *= 0.8 + 0.22 * r2 + 0.16 * r4;
+		v_col = mix(mix(soil, c, 0.8) * 0.9, c, smoothstep(0.0, 0.45, t));
 		v_t = t;
 	}
 }
@@ -127,10 +135,17 @@ void fragment() {
 	if (!FRONT_FACING) {
 		NORMAL = -NORMAL;
 	}
+	// Sky-bent or kept normals can face away from the eye on thin blades;
+	// GGX then blows up at grazing angles into HDR fireflies that the glow
+	// smears into white blobs. Keep N.V slightly positive.
+	{
+		float nv = dot(NORMAL, VIEW);
+		NORMAL = normalize(NORMAL + VIEW * max(0.0, 0.12 - nv));
+	}
 	ALBEDO = v_col * mix(1.0, 0.7, wetness);
 	ROUGHNESS = mix(0.62, 0.35, wetness);
 	SPECULAR = 0.32;
 	BACKLIGHT = v_col * 0.5;
-	AO = mix(0.35, 1.0, smoothstep(0.0, 0.9, v_t));
-	AO_LIGHT_AFFECT = 0.55;
+	AO = mix(0.75, 1.0, smoothstep(0.0, 0.6, v_t));
+	AO_LIGHT_AFFECT = 0.1;
 }

@@ -112,7 +112,7 @@ func _ready() -> void:
 	ducks.setup(audio, 10)
 
 	camera = Camera3D.new()
-	camera.near = 0.05
+	camera.near = 0.03 # held tools are pulled toward the eye by z_clip_scale
 	camera.far = 1500
 	add_child(camera)
 	camera.make_current()
@@ -163,13 +163,22 @@ func _ready() -> void:
 
 
 func _setup_environment() -> void:
-	# Sky: four CC0 HDRI panoramas blended by time of day and storm.
+	# Sky: five CC0 HDRI panoramas blended by time of day and storm. The day
+	# sky is a humid one: pale hazy blue with soft cumulus and a milky
+	# horizon; early mornings fade in from a fully misty sky.
 	sky_mat = ShaderMaterial.new()
 	sky_mat.shader = preload("res://shaders/sky.gdshader")
-	sky_mat.set_shader_parameter("day_tex", load("res://assets/hdri/kloofendal_48d_partly_cloudy_puresky_2k.hdr"))
-	sky_mat.set_shader_parameter("dusk_tex", load("res://assets/hdri/qwantani_sunset_puresky_1k.hdr"))
+	sky_mat.set_shader_parameter("day_tex", load("res://assets/hdri/farm_field_puresky_2k.hdr"))
+	sky_mat.set_shader_parameter("mist_tex", load("res://assets/hdri/kloofendal_28d_misty_puresky_2k.hdr"))
+	sky_mat.set_shader_parameter("dusk_tex", load("res://assets/hdri/rosendal_park_sunset_puresky_1k.hdr"))
 	sky_mat.set_shader_parameter("night_tex", load("res://assets/hdri/qwantani_night_puresky_1k.hdr"))
 	sky_mat.set_shader_parameter("storm_tex", load("res://assets/hdri/kloofendal_overcast_puresky_1k.hdr"))
+	# Where each panorama's own sun is (u, elevation in radians), measured
+	# from the brightest texel, so the shader can turn it onto the real sun.
+	sky_mat.set_shader_parameter("day_sun", Vector2(0.602, deg_to_rad(50.8)))
+	sky_mat.set_shader_parameter("mist_sun", Vector2(0.470, deg_to_rad(28.7)))
+	sky_mat.set_shader_parameter("dusk_sun", Vector2(0.596, deg_to_rad(1.2)))
+	sky_mat.set_shader_parameter("storm_sun", Vector2(0.582, deg_to_rad(23.0)))
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME
@@ -179,83 +188,286 @@ func _setup_environment() -> void:
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.0
-	env.tonemap_white = 6.0
-	env.ssao_enabled = true
-	env.ssao_radius = 1.2
-	env.ssao_intensity = 1.6
+	# AgX keeps the hue of bright colours (sunlit ripe rice, sunset) and has
+	# no exposure bias, so the day exposure sits near 1.3 (see _update_sky).
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_exposure = 1.3
+	env.tonemap_agx_white = 12.0
+	env.tonemap_agx_contrast = 1.3
+	# 4.6 glow is blended before tonemapping in Screen mode; set every level
+	# so the look does not depend on engine defaults. Wide, faint levels give
+	# the soft bloom of wet air around the sun and bright sky.
 	env.glow_enabled = true
-	env.glow_intensity = 0.35
-	env.glow_bloom = 0.04
-	env.glow_hdr_threshold = 1.3
+	env.glow_blend_mode = Environment.GLOW_BLEND_MODE_SCREEN
+	env.glow_intensity = 0.3
+	env.glow_strength = 1.0
+	env.glow_bloom = 0.0
+	env.glow_hdr_threshold = 2.0
+	env.glow_hdr_scale = 2.0
+	for i in 7:
+		env.set_glow_level(i, [0.0, 0.8, 0.5, 0.25, 0.1, 0.0, 0.0][i])
+	# Contact shadows that also darken direct sunlight, plus one bounce of
+	# screen-space indirect light (green under bamboo, warm off the bricks).
+	env.ssao_enabled = true
+	env.ssao_radius = 0.8
+	env.ssao_intensity = 2.2
+	env.ssao_power = 1.6
+	env.ssao_detail = 0.8
+	env.ssao_light_affect = 0.25
+	env.ssao_ao_channel_affect = 0.5
+	env.ssil_enabled = true
+	env.ssil_radius = 3.0
+	env.ssil_intensity = 0.5
+	env.ssil_normal_rejection = 1.0
+	# Mirror paddies: the 4.6 SSR on the opaque water in soil.gdshader.
+	env.ssr_enabled = true
+	env.ssr_max_steps = 64
+	env.ssr_fade_in = 0.3
+	env.ssr_fade_out = 2.0
+	env.ssr_depth_tolerance = 0.5
+	# Humid delta air: exponential haze with strong aerial perspective (the
+	# fog takes the sky colour in the view direction), so far fields and
+	# karst fade into a bright, milky horizon. Densities follow in _update_sky.
 	env.fog_enabled = true
-	env.fog_density = 0.0018
-	env.fog_aerial_perspective = 0.25
+	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
+	env.fog_density = 0.0045
+	env.fog_aerial_perspective = 0.5
 	env.fog_sky_affect = 0.15
+	env.fog_sun_scatter = 0.15
+	env.fog_light_color = Color(0.80, 0.84, 0.87)
+	# Morning mist: volumetric fog with no global density; a FogVolume over
+	# the fields adds a layer that thins with height (see below). The froxel
+	# pass only runs while the mist is out (_update_sky).
+	env.volumetric_fog_enabled = false
+	env.volumetric_fog_density = 0.0
+	env.volumetric_fog_albedo = Color(0.93, 0.95, 0.97)
+	env.volumetric_fog_anisotropy = 0.55
+	env.volumetric_fog_length = 80.0
+	env.volumetric_fog_detail_spread = 2.0
+	env.volumetric_fog_ambient_inject = 1.0
+	env.volumetric_fog_sky_affect = 0.0
+	env.volumetric_fog_gi_inject = 0.0
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.08
-	env.adjustment_contrast = 1.04
+	env.adjustment_saturation = 1.15
+	env.adjustment_contrast = 1.06
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
+
 	sun = DirectionalLight3D.new()
 	sun.shadow_enabled = true
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.directional_shadow_max_distance = 80.0
-	sun.light_angular_distance = 0.6
-	sun.shadow_blur = 1.2
+	# Tighter near cascades for crisp shadows at the feet; blend the seams.
+	sun.directional_shadow_split_1 = 0.06
+	sun.directional_shadow_split_2 = 0.18
+	sun.directional_shadow_split_3 = 0.45
+	sun.directional_shadow_blend_splits = true
+	sun.light_angular_distance = 0.5
+	sun.shadow_blur = 1.0
+	# light_specular stays at the physical 1.0 (the 4.4+ default); the water
+	# shaders use SPECULAR 0.35 (F0 = 0.02) instead of an inflated value.
+	sun.light_specular = 1.0
 	add_child(sun)
+	# The moon is in the south-east sky (+z is south).
 	moon = DirectionalLight3D.new()
-	moon.light_color = Color(0.6, 0.7, 1.0)
+	moon.light_color = Color(0.45, 0.58, 1.0)
 	moon.rotation = Vector3(-1.0, 0.8, 0)
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	moon.shadow_enabled = false
+	# One orthogonal map over the near farm: moon shadows are soft and faint,
+	# so a single cheap pass is enough.
+	moon.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	moon.directional_shadow_max_distance = 25.0
+	moon.shadow_blur = 2.0
+	moon.light_angular_distance = 0.5
 	add_child(moon)
+
+	var mist_mat := FogMaterial.new()
+	mist_mat.albedo = Color(0.94, 0.95, 0.97)
+	mist_mat.height_falloff = 1.1 # density halves every ~0.9 m above the fields
+	mist_mat.edge_fade = 0.6
+	mist_mat.density = 0.0
+	mist = FogVolume.new()
+	mist.shape = RenderingServer.FOG_VOLUME_SHAPE_BOX
+	mist.size = Vector3(220.0, 10.0, 220.0)
+	mist.position = Vector3(0.0, -0.3, 0.0) # falloff counts up from here
+	mist.material = mist_mat
+	add_child(mist)
+
+	# Box-projected probe over the farm: off-screen reflections for the mirror
+	# paddy and the only reflections the transparent canal and pond get. The
+	# box walls are roughly the bamboo groves; it captures near the paddy.
+	probe = ReflectionProbe.new()
+	probe.size = Vector3(68.0, 26.0, 70.0)
+	probe.position = Vector3(0.0, 11.0, -5.0)
+	# Capture at paddy height so the box-projected probe sees the house wall
+	# and eave the way the water does, not the roof.
+	probe.origin_offset = Vector3(0.0, -10.5, 4.0)
+	probe.box_projection = true
+	probe.update_mode = ReflectionProbe.UPDATE_ONCE
+	# Cheap captures: the groves, house and near hills are all inside 150 m,
+	# coarse LODs and no shadow pass (the haze hides both in a reflection).
+	probe.max_distance = 150.0
+	probe.mesh_lod_threshold = 8.0
+	probe.enable_shadows = false
+	probe.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
+	probe.blend_distance = 4.0
+	add_child(probe)
+
+	# Porch lamp: a bare warm bulb under the veranda beam, lit at dusk.
+	lamp = OmniLight3D.new()
+	lamp.position = Vector3(0.0, 2.6, -22.05)
+	lamp.light_color = Color(1.0, 0.66, 0.36)
+	lamp.omni_attenuation = 1.6
+	lamp.light_size = 0.04
+	# Dual-paraboloid: two shadow passes instead of six; the only casters
+	# near the bulb are the veranda posts.
+	lamp.omni_range = 8.0
+	lamp.shadow_enabled = true
+	lamp.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+	lamp.shadow_bias = 0.05
+	lamp.light_energy = 0.0
+	lamp.visible = false
+	add_child(lamp)
+	var bulb := SphereMesh.new()
+	bulb.radius = 0.035
+	bulb.height = 0.08
+	bulb.radial_segments = 12
+	bulb.rings = 6
+	lamp_glass = StandardMaterial3D.new()
+	lamp_glass.albedo_color = Color(0.9, 0.88, 0.8)
+	lamp_glass.roughness = 0.2
+	lamp_glass.emission_enabled = true
+	lamp_glass.emission = Color(1.0, 0.62, 0.3)
+	lamp_glass.emission_energy_multiplier = 0.0
+	var bm := MeshInstance3D.new()
+	bm.mesh = bulb
+	bm.material_override = lamp_glass
+	bm.position = lamp.position + Vector3(0, 0.06, 0)
+	bm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(bm)
+	var cord := CylinderMesh.new()
+	cord.top_radius = 0.005
+	cord.bottom_radius = 0.005
+	cord.height = 0.3
+	cord.radial_segments = 4
+	cord.rings = 1
+	var cm := MeshInstance3D.new()
+	cm.mesh = cord
+	var cord_m := StandardMaterial3D.new()
+	cord_m.albedo_color = Color(0.05, 0.05, 0.05)
+	cm.material_override = cord_m
+	cm.position = lamp.position + Vector3(0, 0.24, 0)
+	cm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(cm)
+
+	# Quality presets (group "quality"): lamp and moon shadows, probe range
+	# and whether the volumetric mist may run. See light_quality.gd.
+	var q: Node = preload("res://scripts/light_quality.gd").new()
+	q.main = self
+	add_child(q)
 
 
 func _setup_particles() -> void:
+	# Rain: thin, faint streaks that are lit by the scene (grey in the storm
+	# light, dark at night), fading at both ends and right in front of the eye.
 	rain = CPUParticles3D.new()
-	var drop := BoxMesh.new()
-	drop.size = Vector3(0.015, 0.45, 0.015)
+	var drop := QuadMesh.new()
+	drop.size = Vector2(0.018, 0.7)
+	var streak := Gradient.new()
+	streak.set_color(0, Color(1, 1, 1, 0))
+	streak.set_color(1, Color(1, 1, 1, 0))
+	streak.add_point(0.35, Color(1, 1, 1, 1))
+	streak.add_point(0.7, Color(1, 1, 1, 0.8))
+	var gt := GradientTexture2D.new()
+	gt.gradient = streak
+	gt.width = 4
+	gt.height = 64
+	gt.fill_from = Vector2(0, 0)
+	gt.fill_to = Vector2(0, 1)
 	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(0.78, 0.83, 0.88, 0.55)
+	dm.albedo_color = Color(0.82, 0.86, 0.9, 0.55)
+	# A faint glow of their own, so streaks still read against dark foliage
+	# and wet ground (real rain catches the bright sky from every side).
+	dm.emission_enabled = true
+	dm.emission = Color(0.25, 0.27, 0.3)
+	dm.emission_energy_multiplier = 0.3
+	dm.albedo_texture = gt
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dm.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
+	dm.billboard_keep_scale = true
+	dm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	dm.roughness = 0.2
+	dm.distance_fade_mode = BaseMaterial3D.DISTANCE_FADE_PIXEL_ALPHA
+	dm.distance_fade_min_distance = 0.4
+	dm.distance_fade_max_distance = 2.0
 	drop.material = dm
 	rain.mesh = drop
-	rain.amount = 2500
-	rain.lifetime = 1.2
+	rain.amount = 4000
+	rain.lifetime = 1.1
 	rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	rain.emission_box_extents = Vector3(25, 0.5, 25)
-	rain.direction = Vector3(0.15, -1, 0)
-	rain.spread = 2.0
+	rain.emission_box_extents = Vector3(18, 0.5, 18)
+	rain.direction = Vector3(0.12, -1, 0.05)
+	rain.spread = 3.0
 	rain.gravity = Vector3.ZERO
-	rain.initial_velocity_min = 16.0
-	rain.initial_velocity_max = 20.0
+	rain.initial_velocity_min = 15.0
+	rain.initial_velocity_max = 19.0
 	rain.local_coords = false
 	rain.emitting = false
+	rain.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(rain)
 
+	# Wood smoke from the kitchen fire: soft lit puffs that grow and fade.
 	smoke = CPUParticles3D.new()
-	var puff := SphereMesh.new()
-	puff.radius = 0.25
-	puff.height = 0.5
+	var puff := QuadMesh.new()
+	puff.size = Vector2(0.7, 0.7)
+	var soft := Gradient.new()
+	soft.set_color(0, Color(1, 1, 1, 1))
+	soft.set_color(1, Color(1, 1, 1, 0))
+	var st := GradientTexture2D.new()
+	st.gradient = soft
+	st.fill = GradientTexture2D.FILL_RADIAL
+	st.fill_from = Vector2(0.5, 0.5)
+	st.fill_to = Vector2(0.5, 0.0)
+	st.width = 64
+	st.height = 64
 	var pm := StandardMaterial3D.new()
-	pm.albedo_color = Color(0.85, 0.85, 0.85, 0.35)
+	pm.albedo_texture = st
+	pm.vertex_color_use_as_albedo = true
 	pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	pm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	pm.roughness = 1.0
+	pm.disable_receive_shadows = true
 	puff.material = pm
 	smoke.mesh = puff
-	smoke.amount = 18
-	smoke.lifetime = 4.0
+	smoke.amount = 24
+	smoke.lifetime = 5.0
 	smoke.direction = Vector3(0.1, 1, 0.1)
-	smoke.spread = 15.0
-	smoke.gravity = Vector3(0.2, 0.3, 0.1)
-	smoke.initial_velocity_min = 0.6
-	smoke.initial_velocity_max = 1.0
-	smoke.scale_amount_min = 0.6
-	smoke.scale_amount_max = 2.0
+	smoke.spread = 12.0
+	smoke.gravity = Vector3(0.25, 0.15, 0.1)
+	smoke.initial_velocity_min = 0.5
+	smoke.initial_velocity_max = 0.8
+	smoke.damping_min = 0.1
+	smoke.damping_max = 0.2
+	smoke.angle_min = -180.0
+	smoke.angle_max = 180.0
+	smoke.angular_velocity_min = -20.0
+	smoke.angular_velocity_max = 20.0
+	smoke.scale_amount_min = 0.7
+	smoke.scale_amount_max = 1.1
+	var grow := Curve.new()
+	grow.add_point(Vector2(0, 0.4))
+	grow.add_point(Vector2(1, 3.0))
+	smoke.scale_amount_curve = grow
+	var fade := Gradient.new()
+	fade.set_color(0, Color(0.78, 0.78, 0.76, 0.0))
+	fade.set_color(1, Color(0.85, 0.86, 0.86, 0.0))
+	fade.add_point(0.12, Color(0.72, 0.72, 0.7, 0.45))
+	smoke.color_ramp = fade
 	smoke.position = Vector3(L.STOVE.x, 0.9, L.STOVE.y)
 	smoke.emitting = false
+	smoke.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(smoke)
 
 
@@ -1094,6 +1306,20 @@ func _move_input() -> Vector2:
 
 
 # ---------------------------------------------------------------- weather & sky
+const SUN_LAT := 0.367 # 21 deg N, the Red River delta
+const SUN_DECL := -0.12 # about -7 deg: the October harvest of the summer crop
+var probe: ReflectionProbe
+var mist: FogVolume
+var lamp: OmniLight3D
+var lamp_glass: StandardMaterial3D
+var wetness := 0.0 # 0 dry .. 1 soaked; rises in rain, dries over a few game hours
+var _wet_min := -1.0
+var _probe_key := -1
+var _probe_fast := 0
+var moon_shadows := true # quality preset (light_quality.gd)
+var vol_allowed := true # quality preset: may the volumetric mist run
+
+
 func _update_sky() -> float:
 	var h := hour()
 	var ang := (h - 6.0) / 12.0 * PI
@@ -1101,26 +1327,94 @@ func _update_sky() -> float:
 	var daylight := clampf(elev * 3.0 + 0.35, 0.0, 1.0)
 	var dusk := clampf(1.0 - absf(elev - 0.08) / 0.27, 0.0, 1.0) if (elev > -0.15 and elev < 0.35) else 0.0
 	var s: float = storm.level
-	var horizon := Color("1a2236").lerp(Color("b8dcf0"), daylight).lerp(Color("f4b88a"), dusk * 0.6).lerp(Color("4a525a"), s * 0.85)
 	var flash: float = storm.lightning
-	if flash > 0.0:
-		horizon = horizon.lerp(Color("dde6ff"), flash)
+	var e := clampf(elev, 0.0, 1.0)
 	sky_mat.set_shader_parameter("daylight", daylight)
 	sky_mat.set_shader_parameter("dusk", dusk)
 	sky_mat.set_shader_parameter("storm", s)
 	sky_mat.set_shader_parameter("flash", flash)
-	sky_mat.set_shader_parameter("drift", fmod(real_t * 0.0005, 1.0))
-	env.fog_light_color = horizon.darkened(0.15)
-	env.fog_density = lerpf(0.0018, 0.02, s)
-	env.ambient_light_energy = (0.25 + 0.75 * daylight) * (1.0 - 0.4 * s) + flash * 1.5
-	# Eyes adapt: lift exposure at night so the farm stays playable by moonlight.
-	env.tonemap_exposure = lerpf(2.4, 1.0, smoothstep(0.0, 0.5, daylight))
-	var dir := Vector3(cos(ang) * 60.0, maxf(elev, 0.08) * 70.0, -25.0)
-	sun.look_at_from_position(dir, Vector3.ZERO, Vector3.UP)
-	sun.light_energy = 1.6 * clampf(elev * 2.5, 0.0, 1.0) * (1.0 - 0.8 * s)
-	sun.light_color = Color("fff1dc").lerp(Color("ffb070"), dusk * 0.7)
+	sky_mat.set_shader_parameter("drift", sin(real_t * 0.004) * 0.004)
+	sky_mat.set_shader_parameter("morning", smoothstep(3.0, 5.0, h) * (1.0 - smoothstep(6.0, 8.0, h)))
+
+	# Sun path for 21 N in October: rises a little south of east at 6:00,
+	# culminates about 63 deg up in the SOUTH (the house faces it), sets a
+	# little south of west at 18:00. x = east, y = up, z = south.
+	var ev := maxf(elev, 0.035)
+	var dir := Vector3(cos(ang) * cos(SUN_DECL), ev * cos(SUN_LAT) * cos(SUN_DECL), ev * sin(SUN_LAT) * cos(SUN_DECL) - cos(SUN_LAT) * sin(SUN_DECL))
+	sun.look_at_from_position(dir * 100.0, Vector3.ZERO, Vector3.UP)
+	# Golden hour: the sun keeps real strength near the horizon and turns
+	# deep orange through the thick, humid air instead of fading to grey.
+	var up := smoothstep(-0.02, 0.04, elev)
+	sun.light_energy = (1.0 + 2.0 * smoothstep(0.0, 0.5, e)) * up * (1.0 - 0.85 * s)
+	sun.light_color = Color(1.0, 0.55, 0.28).lerp(Color(1.0, 0.74, 0.48), smoothstep(0.0, 0.16, e)).lerp(Color(1.0, 0.95, 0.88), smoothstep(0.22, 0.6, e))
 	sun.shadow_enabled = sun.light_energy > 0.02
-	moon.light_energy = 0.12 * (1.0 - daylight) * (1.0 - s)
+	sun.light_volumetric_fog_energy = 1.0 + 1.5 * (1.0 - smoothstep(0.1, 0.4, e))
+	# Moonlight: dim and blue, enough to read the farm by, with soft shadows
+	# once the sun's are off.
+	var night := 1.0 - smoothstep(0.0, 0.35, daylight)
+	moon.light_energy = 0.22 * night * (1.0 - 0.8 * s)
+	moon.shadow_enabled = moon_shadows and moon.light_energy > 0.05 and not sun.shadow_enabled
+	moon.visible = moon.light_energy > 0.001
+
+	# Sky light: a bright overcast-ish humid sky by day, warm and lower at
+	# dusk, dim blue at night; storms darken it, lightning flashes it.
+	# Kept low by day so the sun still models the shapes (SSIL adds the
+	# bounce); a little higher at night so moonlit water and walls read.
+	var amb := lerpf(0.32, 0.15 + lerpf(0.15, 0.25, smoothstep(0.0, 0.45, e)), daylight)
+	env.ambient_light_energy = amb * (1.0 + 0.6 * s) + flash * 1.5
+	# Eyes adapt: AgX maps mid grey 1:1 (no ACES bias), so day exposure is
+	# ~1.3; lift it at night so the farm stays playable by moonlight.
+	env.tonemap_exposure = lerpf(2.0, 1.1, smoothstep(0.0, 0.4, daylight)) * lerpf(1.0, 1.15, s)
+	# Scotopic vision: colours drain at night.
+	env.adjustment_saturation = lerpf(0.85, 1.15, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
+
+	# Haze: morning mist that burns off by ~9:00, humid day haze, dense rain
+	# haze in storms. Fog colour is only 20 % of the look (aerial perspective
+	# takes the sky colour), so it just keeps the haze bright or dark.
+	var morning := smoothstep(3.0, 5.0, h) * (1.0 - smoothstep(6.3, 8.0, h))
+	var evening := smoothstep(18.0, 21.0, h) + (1.0 - smoothstep(1.0, 4.0, h))
+	var fog_c := Color(0.08, 0.1, 0.15).lerp(Color(0.80, 0.84, 0.87), daylight)
+	# Golden hour: from mid-afternoon the haze itself turns warm.
+	var gold := (1.0 - smoothstep(0.18, 0.5, e)) * smoothstep(-0.02, 0.04, elev)
+	fog_c = fog_c.lerp(Color(0.98, 0.8, 0.6), maxf(dusk * 0.7, gold * 0.8)).lerp(Color(0.45, 0.48, 0.5), s * 0.85)
+	sky_mat.set_shader_parameter("gold", gold * (1.0 - s))
+	if flash > 0.0:
+		fog_c = fog_c.lerp(Color("dde6ff"), flash)
+	env.fog_light_color = fog_c
+	env.fog_density = lerpf(lerpf(0.0018, 0.006, morning), 0.018, s)
+	env.fog_sun_scatter = 0.15 + 0.25 * dusk
+	# Ground mist over the paddies (volumetric, thins with height).
+	var fm: FogMaterial = mist.material
+	fm.density = 0.014 * morning + 0.008 * clampf(evening, 0.0, 1.0) * (1.0 - daylight) + 0.01 * s
+	mist.visible = fm.density > 0.001
+	# The froxel pass costs 1-2 ms: run it only while there is mist to show.
+	env.volumetric_fog_enabled = vol_allowed and mist.visible
+
+	# Porch lamp: on from dusk until morning.
+	var lamp_on := 1.0 - smoothstep(0.15, 0.6, daylight)
+	lamp.light_energy = 3.0 * lamp_on
+	lamp.visible = lamp_on > 0.01
+	lamp_glass.emission_energy_multiplier = 30.0 * lamp_on
+
+	# The reflection probe re-renders when the light changes: every game
+	# hour (15 real seconds), and when a storm comes or goes. After a time jump (sleep,
+	# debug skip) it renders whole in one frame instead of over six.
+	var key := int(minutes / 60.0) * 8 + int(s * 4.0 + 0.5)
+	if key != _probe_key:
+		var jump := absi(key - _probe_key) > 8 or _probe_key < 0
+		_probe_key = key
+		probe.position.y = 11.0 + 0.001 * float(key % 2)
+		if jump:
+			probe.update_mode = ReflectionProbe.UPDATE_ALWAYS
+			# and the volumetric mist must not ghost the old hour for a while
+			env.volumetric_fog_temporal_reprojection_enabled = false
+			_probe_fast = 2
+	elif _probe_fast > 0:
+		_probe_fast -= 1
+		if _probe_fast == 0:
+			probe.update_mode = ReflectionProbe.UPDATE_ONCE
+			env.volumetric_fog_temporal_reprojection_enabled = true
+
 	RenderingServer.global_shader_parameter_set("wind_gust", 1.0 + s * 2.5)
 	RenderingServer.global_shader_parameter_set("rain_amount", 1.0 if raining else 0.0)
 	return maxf(0.0, elev) * (1.0 - s) * (0.0 if raining else 1.0)
@@ -1179,7 +1473,20 @@ func _update_storm(dt: float) -> void:
 	audio.set_wind(s.level * (1.0 if s.phase in ["warning", "rain"] else 0.3))
 	audio.set_rain(1.0 if raining else 0.0)
 	rain.emitting = raining
-	rain.position = Vector3(player.pos.x, player.y + 18.0, player.pos.z)
+	rain.position = Vector3(player.pos.x, player.y + 16.0, player.pos.z)
+
+	# Wetness (global for every ground shader): a tropical downpour soaks
+	# everything within ~10 game minutes; it dries over 2-4 game hours,
+	# faster in sun. Counted in game minutes, so sleeping or a time skip
+	# dries it too.
+	var dmin := 0.0 if _wet_min < 0.0 else clampf(minutes - _wet_min, 0.0, 600.0)
+	_wet_min = minutes
+	if raining:
+		wetness = minf(1.0, wetness + dmin / 10.0)
+	else:
+		var sunny: float = clampf(sin((hour() - 6.0) / 12.0 * PI), 0.0, 1.0) * (1.0 - s.level)
+		wetness = maxf(0.0, wetness - dmin / 240.0 * (1.0 + 1.5 * sunny))
+	RenderingServer.global_shader_parameter_set("wetness", wetness)
 
 	if s.phase == "warning":
 		hud.set_banner("[b]Mưa rào sau %d giây![/b]\n[font_size=13]Vun thóc vào khung bạt (chuột phải): %d%% · Bạt: %s · Gạch: %d/4[/font_size]" % [ceili(s.t), int(court.share_inside() * 100), "đã kéo" if tarp_on else "chưa", tarp_placed.count(true)])
@@ -1601,6 +1908,18 @@ func _run_tour() -> void:
 	await _wait(0.6)
 	await _shot("tour-16-ganh")
 	inv.sheaves = 0
+	# Eye-level rice from the west bund: heading in the morning, then ripe.
+	for c in field.clumps:
+		c.cut = false
+	field.growth_day = 5
+	field.rice_dirty = true
+	await _look_at(-8.3, 2.0, -4.0, 1.0, -0.2)
+	await _set_time(7.5) # low side sun: shadow structure inside the canopy
+	await _shot("tour-17-rice-eye-heading")
+	field.growth_day = 8
+	field.rice_dirty = true
+	await _set_time(16.6)
+	await _shot("tour-18-rice-eye-ripe")
 	get_tree().quit(0)
 
 

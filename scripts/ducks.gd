@@ -173,7 +173,9 @@ func step(dt: float, player: Vector3, fwd: Vector3, pole_active: bool, pen_open:
 		d.pos = pos
 		d.vel = vel
 		var gy := L.ground_y(pos.x, pos.z)
-		if gy < -0.2:
+		if L.in_pond(pos.x, pos.z):
+			gy = maxf(gy, L.POND_WATER - 0.06) # swimming in the pond
+		elif gy < -0.2:
 			gy = -0.3 # swimming in the canal
 		var node: Node3D = d.node
 		node.position = Vector3(pos.x, gy + sin(time * 6.0 + d.wander) * 0.015, pos.z)

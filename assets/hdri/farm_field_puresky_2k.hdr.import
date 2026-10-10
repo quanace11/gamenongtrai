@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cwqu45lan0qo4"
-path="res://.godot/imported/qwantani_sunset_puresky_1k.hdr-382d42f652dd6fa8997c52fb0fcf98ef.ctex"
+uid="uid://dlgycm6wioqtw"
+path="res://.godot/imported/farm_field_puresky_2k.hdr-7f06ffc860447efeb32057c8e2cc634e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/hdri/qwantani_sunset_puresky_1k.hdr"
-dest_files=["res://.godot/imported/qwantani_sunset_puresky_1k.hdr-382d42f652dd6fa8997c52fb0fcf98ef.ctex"]
+source_file="res://assets/hdri/farm_field_puresky_2k.hdr"
+dest_files=["res://.godot/imported/farm_field_puresky_2k.hdr-7f06ffc860447efeb32057c8e2cc634e.ctex"]
 
 [params]
 

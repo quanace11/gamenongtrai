@@ -1,9 +1,11 @@
 # The village lawn: short grass blades that follow the camera (see
 # shaders/grass_lawn.gdshader). Two MultiMeshes of single blades:
-#   near: a 24 m wrap patch, 12.5 cm apart on High (~64 blades per m²),
-#         4 segments, fading out at 8.5-11.5 m;
-#   far:  a 48 m patch of wider 2-segment blades that grows in where the
-#         near patch fades and fades out by 23 m.
+#   near: a 24 m wrap patch of 5-blade tufts 12 cm apart on High (~350
+#         blades per m²), 3 segments, fading out at 8.5-11.5 m;
+#   far:  a 64 m patch of wider 3-blade, 2-segment tufts 40 cm apart that
+#         is fully grown in before the near patch starts to fade (no density
+#         step at the handover) and fades out by 31 m, where the haze and
+#         the ground texture take over.
 # The mask (density, dryness, tall grass, trodden path) and the height map
 # are painted once from layout.gd: no grass in the paddy, courtyard, house,
 # pens, canal, pond or nursery bed, and none on the bund steps, where
@@ -16,7 +18,7 @@ const SHADER = preload("res://shaders/grass_lawn.gdshader")
 const MAP_RECT := Rect2(-40.0, -44.0, 80.0, 80.0)
 const RES := 256
 # [near grid, far grid] per quality level 0..2
-const GRIDS := [[128, 80], [160, 96], [192, 112]]
+const GRIDS := [[130, 110], [165, 135], [200, 160]]
 
 var shade_spots: Array = [] # [Vector3(x, z, radius)] under groves: thinner, drier grass
 var _near: MultiMeshInstance3D
@@ -28,8 +30,8 @@ func _ready() -> void:
 	add_to_group("quality")
 	var maps := _paint()
 	var nz := F.wind_noise()
-	_near = _patch(24.0, 4, Vector2(8.5, 11.5), Vector2.ZERO, 0.0028, maps, nz)
-	_far = _patch(48.0, 2, Vector2(18.0, 23.0), Vector2(8.0, 11.0), 0.0055, maps, nz)
+	_near = _patch(24.0, 3, 5, Vector2(8.5, 11.5), Vector2.ZERO, 0.0068, maps, nz)
+	_far = _patch(64.0, 2, 3, Vector2(26.0, 31.0), Vector2(6.0, 8.5), 0.018, maps, nz)
 	set_quality(2)
 
 
@@ -55,37 +57,46 @@ func _set_grid(mmi: MultiMeshInstance3D, grid: int) -> void:
 	(mmi.material_override as ShaderMaterial).set_shader_parameter("grid", grid)
 
 
-static func blade_mesh(segs: int) -> ArrayMesh:
+# One tuft: `blades` blades of `segs` segments, all at the origin; the
+# shader spreads and bends them. UV = (across, along), UV2.x = blade index.
+static func blade_mesh(segs: int, blades := 4) -> ArrayMesh:
 	var v := PackedVector3Array()
 	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
 	var idx := PackedInt32Array()
-	for s in segs:
-		var t := float(s) / segs
-		v.append(Vector3(-0.01, t * 0.3, 0.0))
-		v.append(Vector3(0.01, t * 0.3, 0.0))
-		uv.append(Vector2(0.0, t))
-		uv.append(Vector2(1.0, t))
-	v.append(Vector3(0.0, 0.3, 0.0)) # tip
-	uv.append(Vector2(0.5, 1.0))
-	for s in segs - 1:
-		var a := s * 2
-		idx.append_array([a, a + 2, a + 1, a + 1, a + 2, a + 3])
-	var last := (segs - 1) * 2
-	idx.append_array([last, segs * 2, last + 1])
+	for bl in blades:
+		var o := v.size()
+		for s in segs:
+			var t := float(s) / segs
+			v.append(Vector3(-0.01, t * 0.3, 0.0))
+			v.append(Vector3(0.01, t * 0.3, 0.0))
+			uv.append(Vector2(0.0, t))
+			uv.append(Vector2(1.0, t))
+			uv2.append(Vector2(bl, 0.0))
+			uv2.append(Vector2(bl, 0.0))
+		v.append(Vector3(0.0, 0.3, 0.0)) # tip
+		uv.append(Vector2(0.5, 1.0))
+		uv2.append(Vector2(bl, 0.0))
+		for s in segs - 1:
+			var a := o + s * 2
+			idx.append_array([a, a + 2, a + 1, a + 1, a + 2, a + 3])
+		var last := o + (segs - 1) * 2
+		idx.append_array([last, o + segs * 2, last + 1])
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = v
 	arrays[Mesh.ARRAY_TEX_UV] = uv
+	arrays[Mesh.ARRAY_TEX_UV2] = uv2
 	arrays[Mesh.ARRAY_INDEX] = idx
 	var m := ArrayMesh.new()
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return m
 
 
-func _patch(size: float, segs: int, fade: Vector2, fade_in: Vector2, width: float, maps: Array, nz: Texture2D) -> MultiMeshInstance3D:
+func _patch(size: float, segs: int, blades: int, fade: Vector2, fade_in: Vector2, width: float, maps: Array, nz: Texture2D) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = blade_mesh(segs)
+	mm.mesh = blade_mesh(segs, blades)
 	# Always around the camera: one big box instead of per-frame AABB updates.
 	mm.custom_aabb = AABB(Vector3(MAP_RECT.position.x, -3.0, MAP_RECT.position.y), Vector3(MAP_RECT.size.x, 8.0, MAP_RECT.size.y))
 	var mat := ShaderMaterial.new()
@@ -166,15 +177,15 @@ func _paint() -> Array:
 			# pond: none inside the rim, reeds on it
 			var pdist := Vector2(x - L.POND.x, z - L.POND.z).length() - L.POND.r
 			dens *= smoothstep(0.45, 0.8, pdist)
-			tall = maxf(tall, (1.0 - smoothstep(0.6, 1.8, pdist)) * 0.8)
+			tall = maxf(tall, (1.0 - smoothstep(0.6, 1.8, pdist)) * 0.5) # low enough to show the stones
 			# trodden paths: yard to the field, yard to the pond and the nursery
 			var path := (1.0 - smoothstep(0.3, 0.8, absf(x - 0.5 * sin(z * 0.3)))) * float(z > -14.3 and z < -8.7)
 			path = maxf(path, _seg_path(x, z, Vector2(-6.0, -15.5), L.POND_EDGE, 0.6))
 			path = maxf(path, _seg_path(x, z, Vector2(6.0, -16.0), L.NURSERY + Vector2(-2.3, 0.0), 0.6))
 			dens *= 1.0 - 0.75 * path
 			var sh := shade[py * RES + px]
-			dens *= 1.0 - 0.6 * sh
-			var dryness := clampf(0.1 + 0.45 * (1.0 - n) * (1.0 - tall) + 0.35 * sh, 0.0, 1.0)
+			dens *= 1.0 - 0.35 * sh
+			var dryness := clampf(0.05 + 0.32 * (1.0 - n) * (1.0 - tall) + 0.2 * sh, 0.0, 1.0)
 			img.set_pixel(px, py, Color(clampf(dens, 0.0, 1.0), dryness, tall, path))
 	return [ImageTexture.create_from_image(img), ImageTexture.create_from_image(hmap)]
 

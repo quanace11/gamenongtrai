@@ -246,6 +246,8 @@ func refresh() -> void:
 	hs.resize(nx * nz)
 	var cols := PackedColorArray()
 	cols.resize(nx * nz)
+	var cover := PackedVector2Array()
+	cover.resize(nx * nz)
 	var any := false
 	for vj in nz:
 		for vi in nx:
@@ -255,7 +257,8 @@ func refresh() -> void:
 			# Only where some cell really holds grain.
 			var raw := _sample(mass, u, v)
 			var h := 0.0
-			if raw > 0.05:
+			cover[vj * nx + vi] = Vector2(clampf(raw / 0.6, 0.0, 1.0), 0.0)
+			if raw > 0.01:
 				h = m * KG_H
 				h += 0.003 * sin(u * 91.0 + v * 57.0) * sin(v * 83.0 - u * 23.0)
 				any = true
@@ -278,8 +281,8 @@ func refresh() -> void:
 	for vj in nz:
 		for vi in nx:
 			var h := hs[vj * nx + vi]
-			# Edges of the layer dip under the bricks so the rim is hidden.
-			var y := 0.016 + h if h > 0.0015 else 0.004
+			# The ragged rim of the layer is cut out in the shader (UV.x = cover).
+			var y := 0.016 + h
 			verts[vj * nx + vi] = Vector3(L.COURT.x0 + vi * step, y, L.COURT.z0 + vj * step)
 			var hl := hs[vj * nx + maxi(vi - 1, 0)]
 			var hr := hs[vj * nx + mini(vi + 1, nx - 1)]
@@ -298,6 +301,7 @@ func refresh() -> void:
 	arrays[Mesh.ARRAY_VERTEX] = verts
 	arrays[Mesh.ARRAY_NORMAL] = nrm
 	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_TEX_UV] = cover
 	arrays[Mesh.ARRAY_INDEX] = idx
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)

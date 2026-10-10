@@ -1,6 +1,8 @@
 // Paddy spread on the yard to dry. Vertex colour: RGB = shade of the grain
 // (golden when dry, darker when damp), A = how thinly it is raked out,
 // which sets the depth of the rake furrows drawn here as a normal pattern.
+// UV.x = coverage: where it falls off, single grains are cut out by noise
+// so the edge of the layer frays into scattered paddy on the bricks.
 shader_type spatial;
 render_mode diffuse_burley;
 
@@ -16,7 +18,13 @@ void vertex() {
 	BINORMAL = vec3(0.0, 0.0, 1.0);
 }
 
+float hash(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
 void fragment() {
+	ALPHA = UV.x;
+	ALPHA_SCISSOR_THRESHOLD = 0.15 + 0.8 * hash(floor(wpos.xz * 160.0));
 	// Furrows about 15 cm apart, pulled along z by the rake, slightly wavy.
 	float ph = wpos.x * 42.0 + sin(wpos.z * 3.0) * 0.6;
 	float slope = cos(ph) * COLOR.a;

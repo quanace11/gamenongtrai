@@ -1,7 +1,8 @@
-// Alpha-free leaves and blades built as geometry: grass tufts, paddy weeds,
-// palm leaflets, banana pseudostems. Bends in the wind with the height above
-// the plant's base (whole plant) plus COLOR.a (leaf or frond flex), with a
-// phase per leaf from UV2.y. Stays in the opaque pass: no ALPHA is written.
+// Grass tufts, weeds and nursery seedlings built as geometry: no texture and
+// no ALPHA, so they stay on the opaque fast path. Bends in the wind with the
+// height above the plant's base (whole plant) plus COLOR.a (blade flex), with
+// a phase per blade from UV2.y and gust waves from the shared noise.
+// (The village trees keep the original foliage.gdshader unchanged.)
 shader_type spatial;
 render_mode cull_disabled, diffuse_lambert_wrap, specular_schlick_ggx;
 
@@ -40,8 +41,15 @@ void fragment() {
 	if (keep_normal && !FRONT_FACING) {
 		NORMAL = -NORMAL;
 	}
+	// Sky-bent or kept normals can face away from the eye on thin blades;
+	// GGX then blows up at grazing angles into HDR fireflies that the glow
+	// smears into white blobs. Keep N.V slightly positive.
+	{
+		float nv = dot(NORMAL, VIEW);
+		NORMAL = normalize(NORMAL + VIEW * max(0.0, 0.12 - nv));
+	}
 	// Vertex and instance colours are authored in sRGB.
-	// max(): with MSAA the colour is extrapolated past thin leaf tips and can
+	// max(): with MSAA the colour is extrapolated past thin blade tips and can
 	// dip below zero; pow() of that is NaN, which the glow smears into blobs.
 	vec3 c = pow(max(COLOR.rgb, vec3(0.0)), vec3(2.2)) * tint;
 	ALBEDO = c * mix(1.0, 0.75, wetness);

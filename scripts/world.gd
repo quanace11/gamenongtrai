@@ -121,8 +121,11 @@ static func water_material(kind: String) -> ShaderMaterial:
 			m.set_shader_parameter("clarity", 0.35)
 			m.set_shader_parameter("scale", 0.5)
 		"canal":
-			m.set_shader_parameter("tint", Color(0.22, 0.28, 0.2))
-			m.set_shader_parameter("clarity", 0.82)
+			# Turbid water reflects little light back up (albedo ~0.1), and is
+			# clear enough that the bank slope shows under the edges.
+			m.set_shader_parameter("tint", Color(0.12, 0.15, 0.09))
+			m.set_shader_parameter("clarity", 0.5)
+			m.set_shader_parameter("shore", 0.12)
 		"pond":
 			m.set_shader_parameter("tint", Color(0.16, 0.25, 0.18))
 			m.set_shader_parameter("clarity", 0.88)
@@ -857,12 +860,7 @@ static func _props(root: Node3D, h: Dictionary) -> void:
 	place(root, "watering_can_metal_01", Vector3(L.NURSERY.x - 2.4, 0.0, L.NURSERY.y + 1.2), 1.2, 2.2)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	var seed_pts := []
-	for i in 300:
-		seed_pts.append(Vector3(L.NURSERY.x - 1.8 + rng.randf() * 3.6, 0.12, L.NURSERY.y - 1.3 + rng.randf() * 2.6))
-	var smi := F.grass(root, seed_pts, F.tuft_mesh(7, 0.3, 0.012), rng, 0.0)
-	for i in 300:
-		smi.multimesh.set_instance_color(i, Color(0.45, 0.72, 0.2).lerp(Color(0.6, 0.8, 0.3), rng.randf()))
+	var smi := F.seedling_bed(root, Vector3(L.NURSERY.x, 0.12, L.NURSERY.y), Vector2(3.7, 2.7), 300, rng)
 	h.seedlings = smi
 
 	# Chuồng vịt: bamboo fence, thatched shelter, gate on the west side
@@ -1162,16 +1160,19 @@ static func _buffalo(root: Node3D) -> Node3D:
 static func _plants(root: Node3D) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2024
-	_trees(root)
+	# grove centres, for the lawn's thinner grass in the bamboo shade
+	var groves := _trees(root)
 
-	# Grass tufts on open ground, taller along bunds and the canal
-	var pts := []
-	while pts.size() < 12000:
-		var x := rng.randf_range(-32, 32)
-		var z := rng.randf_range(-36, 30)
-		if _clear_for_grass(x, z):
-			pts.append(Vector3(x, 0, z))
-	F.grass(root, pts, F.tuft_mesh(10, 0.3, 0.02), rng, 0.35, 8.0, 40.0)
+	# The lawn: dense short blades that follow the camera (grass_lawn.gd),
+	# masked off the paddy, yard, paths, house, canal and pond. No shadows.
+	var lawn: Node3D = preload("res://scripts/grass_lawn.gd").new()
+	lawn.name = "Lawn"
+	# thinner, drier grass in the shade of the bamboo clumps
+	for g in groves:
+		lawn.shade_spots.append(Vector3(g.x, g.y, 4.0))
+	root.add_child(lawn)
+	# Taller, thin-bladed tufts only where grass grows rank: bund tops and
+	# canal banks.
 	var tall := []
 	var b: float = L.FIELD.bund
 	for i in 700:
@@ -1184,48 +1185,100 @@ static func _plants(root: Node3D) -> void:
 	for i in 500:
 		var x: float = [L.CANAL.x0 - 0.25, L.CANAL.x1 + 0.25][i % 2] + rng.randf_range(-0.2, 0.2)
 		tall.append(Vector3(x, 0, rng.randf_range(-34, 30)))
-	F.grass(root, tall, F.tuft_mesh(10, 0.5, 0.022), rng, 0.25, 8.0, 60.0)
+	F.grass(root, tall, F.tuft_mesh(16, 0.42, 0.0055), rng, 0.15, 8.0, 40.0)
 
 	# Poly Haven plants and rocks around the edges
+	# shrub_04 is a 22 cm model and the nettle parts 2-22 cm: scaled up so
+	# they stand out of the 10-28 cm lawn. Each shrub gets a fern beside it,
+	# not on top of it. Nettles grow where the lawn stops: along the house,
+	# sheds and pens, and on the pond rim.
 	var weeds := []
 	var shrubs := []
+	var ferns := []
 	var rocks := []
-	for i in 140:
+	for i in 50:
 		var x := rng.randf_range(-30, 30)
 		var z := rng.randf_range(-34, 28)
 		if not _clear_for_grass(x, z):
 			continue
-		var pt := [Vector3(x, 0, z), rng.randf() * TAU, rng.randf_range(0.8, 1.6)]
-		if i % 3 == 0:
-			shrubs.append(pt)
-		else:
-			weeds.append(pt)
+		shrubs.append([Vector3(x, L.ground_y(x, z), z), rng.randf() * TAU, rng.randf_range(2.5, 4.0)])
+		var a := rng.randf() * TAU
+		var d := rng.randf_range(0.6, 1.2)
+		var f := Vector2(x + cos(a) * d, z + sin(a) * d)
+		if _clear_for_grass(f.x, f.y):
+			ferns.append([Vector3(f.x, L.ground_y(f.x, f.y), f.y), rng.randf() * TAU, rng.randf_range(1.5, 2.5)])
+	var walls: Array = L.BLOCKERS.duplicate()
+	walls.append([L.DUCK_PEN.x0, L.DUCK_PEN.x1, L.DUCK_PEN.z0, L.DUCK_PEN.z1])
+	for rc in walls:
+		var per: float = 2.0 * ((rc[1] - rc[0]) + (rc[3] - rc[2]))
+		for k in int(per / 2.5):
+			# a point on the rectangle's outline, 15-35 cm outside it
+			var u := rng.randf() * per
+			var o := rng.randf_range(0.15, 0.35)
+			var q: Vector2
+			var w: float = rc[1] - rc[0]
+			var h: float = rc[3] - rc[2]
+			if u < w:
+				q = Vector2(rc[0] + u, rc[2] - o)
+			elif u < w + h:
+				q = Vector2(rc[1] + o, rc[2] + u - w)
+			elif u < 2.0 * w + h:
+				q = Vector2(rc[1] - (u - w - h), rc[3] + o)
+			else:
+				q = Vector2(rc[0] - o, rc[3] - (u - 2.0 * w - h))
+			if L.in_court(q.x, q.y) or L.blocked(q.x, q.y) or L.in_field(q.x, q.y, L.FIELD.bund + 0.3):
+				continue
+			weeds.append([Vector3(q.x, L.ground_y(q.x, q.y), q.y), rng.randf() * TAU, rng.randf_range(2.0, 3.0)])
+	for i in 18:
+		var a := rng.randf() * TAU
+		var r: float = L.POND.r + rng.randf_range(0.25, 0.5)
+		var q := Vector2(L.POND.x + cos(a) * r, L.POND.z + sin(a) * r)
+		weeds.append([Vector3(q.x, L.ground_y(q.x, q.y), q.y), rng.randf() * TAU, rng.randf_range(2.0, 3.0)])
 	# River stones on the pond rim and canal banks: grey, half buried, a few
 	# small ones beside each bigger one.
 	for i in 22:
 		var a := rng.randf() * TAU
 		var r: float = L.POND.r + rng.randf_range(0.25, 0.9)
-		rocks.append([Vector3(L.POND.x + cos(a) * r, 0.0, L.POND.z + sin(a) * r), rng.randf() * TAU, rng.randf_range(0.8, 1.7)])
+		rocks.append([Vector3(L.POND.x + cos(a) * r, 0.0, L.POND.z + sin(a) * r), rng.randf() * TAU, rng.randf_range(1.0, 2.0)])
 	for i in 26:
-		rocks.append([Vector3([L.CANAL.x0 - 0.35, L.CANAL.x1 + 0.35][i % 2] + rng.randf_range(-0.15, 0.15), 0.0, rng.randf_range(-30, 26)), rng.randf() * TAU, rng.randf_range(0.8, 1.6)])
-	var pebbles := []
+		rocks.append([Vector3([L.CANAL.x0 - 0.35, L.CANAL.x1 + 0.35][i % 2] + rng.randf_range(-0.15, 0.15), 0.0, rng.randf_range(-30, 26)), rng.randf() * TAU, rng.randf_range(1.0, 2.0)])
+	# Every stone sits on the real ground height; none in the canal or the
+	# pond water (the canal floor is 0.75 m down, so they would float).
+	var stones := []
 	for p in rocks:
+		if _stone_ok(p[0]):
+			stones.append(p)
+	var pebbles := []
+	for p in stones:
 		for k in 2:
-			var o := Vector3(rng.randf_range(-0.5, 0.5), 0.0, rng.randf_range(-0.5, 0.5))
-			pebbles.append([p[0] + o, rng.randf() * TAU, rng.randf_range(0.6, 1.2)])
-	A.scatter(root, "weed_plant_02", weeds, true, 30.0)
-	A.scatter(root, "nettle_plant", weeds.slice(0, weeds.size() / 2), true, 30.0)
+			var q: Vector3 = p[0] + Vector3(rng.randf_range(-0.5, 0.5), 0.0, rng.randf_range(-0.5, 0.5))
+			if _stone_ok(q):
+				pebbles.append([q, rng.randf() * TAU, rng.randf_range(0.6, 1.2)])
+	for p in stones + pebbles:
+		var v: Vector3 = p[0]
+		p[0] = Vector3(v.x, L.ground_y(v.x, v.z), v.z)
+	rocks = stones
+	# knee-high weeds cast no shadows (one less pass per cascade).
+	# weed_plant_02 is dropped: its parts are 4-7 cm tall, invisible in the
+	# lawn at any sane scale.
+	A.scatter(root, "nettle_plant", weeds, false, 30.0)
 	A.scatter(root, "shrub_04", shrubs, true, 40.0)
-	A.scatter(root, "fern_02", shrubs, true, 40.0)
-	A.scatter(root, "rock_07", rocks, true, 45.0, 0.4, A.recolor("rock_07", 0.25, Color(0.84, 0.87, 0.9), 0.95))
-	A.scatter(root, "stone_01", pebbles, false, 25.0, 0.35, A.recolor("stone_01", 0.2, Color(0.8, 0.82, 0.84), 0.9))
+	A.scatter(root, "fern_02", ferns, true, 40.0)
+	A.scatter(root, "rock_07", rocks, true, 45.0, 0.22, A.recolor("rock_07", 0.25, Color(0.95, 0.95, 0.93), 1.35))
+	A.scatter(root, "stone_01", pebbles, false, 25.0, 0.35, A.recolor("stone_01", 0.2, Color(0.86, 0.87, 0.88), 1.1))
+
+
+static func _stone_ok(q: Vector3) -> bool:
+	if q.x > L.CANAL.x0 - 0.05 and q.x < L.CANAL.x1 + 0.05:
+		return false
+	return Vector2(q.x - L.POND.x, q.z - L.POND.z).length() > L.POND.r + 0.2
 
 
 # Village trees. A lũy tre hedge closes the homestead on the north, west and
 # east (the south opens onto the paddies), bananas and areca palms stand in
 # the garden, and across the paddies other villages read as dark islands of
 # bamboo with palms and fruit trees rising above them.
-static func _trees(root: Node3D) -> void:
+static func _trees(root: Node3D) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2025
 	var groves := [Vector2(-24, -30), Vector2(24, -26), Vector2(-26, 18), Vector2(20, 22), Vector2(26, -6), Vector2(-6, -34), Vector2(10, -33)]
@@ -1254,6 +1307,7 @@ static func _trees(root: Node3D) -> void:
 	for v in [[-60, 85, 22], [45, 110, 28], [-15, 165, 30], [95, 15, 25], [80, -75, 22], [150, 60, 30],
 			[-90, 35, 26], [-85, -55, 24], [-150, -10, 30], [-35, -100, 26], [40, -115, 30], [0, -170, 35]]:
 		_village(root, Vector2(v[0], v[1]), v[2], rng)
+	return groves
 
 
 static func _village(root: Node3D, c: Vector2, rad: float, rng: RandomNumberGenerator) -> void:
