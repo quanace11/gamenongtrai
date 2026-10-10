@@ -93,7 +93,8 @@ void fragment() {
 		col *= (1.0 + 0.1 * mid * (1.0 - step(0.25, organ))) * (0.97 + 0.03 * sin(UV.x * 70.0));
 		// stubble: weathered grey-buff straw, darker cut ends soaked at the
 		// base, and now and then a green ratoon shoot (lúa chét)
-		vec3 straw = mix(vec3(0.58, 0.51, 0.35), vec3(0.72, 0.63, 0.42), fract(rnd * 5.7 + v_state.z)) * mix(0.8, 1.05, t);
+		// (literal colours here are sRGB, hence the pow)
+		vec3 straw = pow(mix(vec3(0.52, 0.45, 0.31), vec3(0.66, 0.56, 0.36), fract(rnd * 5.7 + v_state.z)), vec3(2.2)) * mix(0.7, 1.0, t);
 		straw = mix(straw, c_young * 0.85, step(0.88, fract(rnd * 11.3 + v_state.w)) * step(organ, 0.25));
 		col = mix(col, straw, stubble);
 	}

@@ -93,9 +93,12 @@ func _go() -> void:
 					await m._look_at(-6.9, 8.3, -4.5, 4.0, -0.3)
 					await m._set_time(9.5 if d != "8" else 16.5)
 					await m._shot("rice-close-" + d)
+					for c in m.field.clumps:
+						c.cut = false
 				elif id.begins_with("n"):
 					# nursery bed at day state
 					m.nursery.state = "ready"
+					m.nursery.bundles = 0
 					m._refresh_nursery()
 					var sd: MultiMeshInstance3D = m.world.seedlings
 					print("SEED ", sd.multimesh.visible_instance_count, " ", sd.global_transform, " ", sd.multimesh.get_aabb(), " ", sd.get_aabb())
