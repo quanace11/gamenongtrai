@@ -54,16 +54,24 @@ func _ready() -> void:
 		_soil_mat.set_shader_parameter(k[0] + "_alb", A.tex(k[1], "diff"))
 		_soil_mat.set_shader_parameter(k[0] + "_nor", A.tex(k[1], "nor"))
 		_soil_mat.set_shader_parameter(k[0] + "_arm", A.tex(k[1], "arm"))
+	# The flooded water is drawn by the soil shader itself (opaque, so it
+	# gets screen-space reflections); it only needs gentle ripple normals.
+	_soil_mat.set_shader_parameter("wave_a", _ripple_texture(5))
+	_soil_mat.set_shader_parameter("wave_b", _ripple_texture(11))
+	_soil_mat.set_shader_parameter("floor_y", L.FIELD.y)
 	_soil = MeshInstance3D.new()
 	_soil.material_override = _soil_mat
 	_soil.position.y = L.FIELD.y
+	_soil.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF # the shader moves its depth
 	add_child(_soil)
 
-	var wp := PlaneMesh.new()
-	wp.size = Vector2(16, 16)
+	# Skirt: four inward-facing walls at the field edge, same material. Rays
+	# that reach a bund face below the water line pass through it first, so
+	# the water surface also covers the submerged bund faces.
 	_water = MeshInstance3D.new()
-	_water.mesh = wp
-	_water.material_override = W.water_material("paddy")
+	_water.mesh = _skirt_mesh()
+	_water.material_override = _soil_mat
+	_water.position.y = L.FIELD.y
 	_water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_water.visible = false
 	add_child(_water)
@@ -73,6 +81,49 @@ func _ready() -> void:
 	_weeds = _multimesh(F.tuft_mesh(14, 0.42, 0.006), 80)
 	for i in 80:
 		_weed_pos.append(Vector2(randf_range(-7.6, 7.6), randf_range(-7.6, 7.6)))
+
+
+static func _ripple_texture(seed: int) -> NoiseTexture2D:
+	var n := FastNoiseLite.new()
+	n.seed = seed
+	n.frequency = 0.03
+	n.fractal_octaves = 3
+	var t := NoiseTexture2D.new()
+	t.width = 256
+	t.height = 256
+	t.seamless = true
+	t.as_normal_map = true
+	t.bump_strength = 3.0
+	t.generate_mipmaps = true
+	t.noise = n
+	return t
+
+
+# Vertical quads just inside the field edge, from below the soil to above
+# the highest water, facing the field centre. Vertex alpha 0 marks them.
+static func _skirt_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var e := 7.995
+	var y0 := -0.08
+	var y1 := 0.6
+	var c := Color(0, 1, 0, 0)
+	for side in [[Vector2(-e, -e), Vector2(e, -e)], [Vector2(e, -e), Vector2(e, e)], [Vector2(e, e), Vector2(-e, e)], [Vector2(-e, e), Vector2(-e, -e)]]:
+		var a: Vector2 = side[0]
+		var b: Vector2 = side[1]
+		var inward := Vector3(-(a.x + b.x), 0, -(a.y + b.y)).normalized()
+		var q := [Vector3(a.x, y0, a.y), Vector3(b.x, y0, b.y), Vector3(b.x, y1, b.y), Vector3(a.x, y1, a.y)]
+		# Godot's front faces wind clockwise: their cross product points away
+		# from the side they are seen from.
+		var tris := [[q[0], q[1], q[2]], [q[0], q[2], q[3]]]
+		if (q[1] - q[0]).cross(q[2] - q[0]).dot(inward) > 0.0:
+			tris = [[q[0], q[2], q[1]], [q[0], q[3], q[2]]]
+		for tri in tris:
+			for v in tri:
+				st.set_color(c)
+				st.set_normal(inward)
+				st.add_vertex(v)
+	return st.commit()
 
 
 func _multimesh(mesh: Mesh, count: int) -> MultiMeshInstance3D:
@@ -278,9 +329,11 @@ func refresh() -> void:
 		_update_soil()
 	if rice_dirty:
 		_update_rice()
-	_water.visible = water > 0.15
-	_water.position.y = L.FIELD.y + 0.01 + water * WATER_VIS
-	var wy: float = _water.position.y if _water.visible else -100.0
+	# The soil shader draws water wherever the soil lies under this level.
+	var flooded := water > 0.15
+	_water.visible = flooded
+	var wy: float = L.FIELD.y + 0.01 + water * WATER_VIS if flooded else -100.0
+	_soil_mat.set_shader_parameter("water_y", wy if flooded else -10.0)
 	if wy != _rice_water_y:
 		_rice_water_y = wy
 		_rice.set_water_y(wy)

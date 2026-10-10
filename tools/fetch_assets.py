@@ -22,7 +22,8 @@ for t in tex:
   for k,suf in [('Diffuse','diff'),('nor_gl','nor'),('arm','arm')]:
     dl(f[k]['1k']['jpg']['url'], f'{root}/textures/{t}/{t}_{suf}_1k.jpg')
   print('tex',t,flush=True)
-for h,res in [('kloofendal_48d_partly_cloudy_puresky','2k'),('qwantani_sunset_puresky','1k'),('qwantani_night_puresky','1k'),('kloofendal_overcast_puresky','1k')]:
+# Skies (package LIGHT): hazy day, misty morning, soft sunset, night, storm.
+for h,res in [('farm_field_puresky','2k'),('kloofendal_28d_misty_puresky','2k'),('rosendal_park_sunset_puresky','1k'),('qwantani_night_puresky','1k'),('kloofendal_overcast_puresky','1k')]:
   f=get('https://api.polyhaven.com/files/'+h)
   dl(f['hdri'][res]['hdr']['url'], f'{root}/hdri/{h}_{res}.hdr'); print('hdri',h,flush=True)
 mods=['wicker_basket_02','wicker_basket_01','wooden_bucket_02','wooden_bucket_01','ceramic_pot','planter_pot_clay','stone_fire_pit','watering_can_metal_01','wooden_crate_01','rock_07','stone_01','tree_stump_01','fern_02','shrub_04','nettle_plant','weed_plant_02','hatchet']
