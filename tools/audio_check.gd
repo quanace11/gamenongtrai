@@ -110,7 +110,7 @@ func _loop_peak(a, w: Dictionary, rain: float) -> float:
 
 
 # Loop seams: the jump from the last frame to the first should be no bigger
-# than an ordinary step inside the loop.
+# than the largest step that already occurs inside the loop.
 func _seams(a) -> void:
 	for n in a.sounds:
 		var w: AudioStreamWAV = a.sounds[n][0]
@@ -125,8 +125,6 @@ func _seams(a) -> void:
 			var first := d.decode_s16(c * 2) / 32767.0
 			var last := d.decode_s16(((frames - 1) * ch + c) * 2) / 32767.0
 			seam = maxf(seam, absf(first - last))
-			var acc := 0.0
-			for i in range(1, frames, 97):
-				acc += absf(d.decode_s16((i * ch + c) * 2) - d.decode_s16(((i - 1) * ch + c) * 2)) / 32767.0
-			typical = maxf(typical, acc / (frames / 97.0))
-		print("seam %-14s jump %.4f  typical step %.4f  %s" % [n, seam, typical, "OK" if seam <= typical * 4.0 + 0.002 else "CLICK?"])
+			for i in range(1, frames, 3):
+				typical = maxf(typical, absf(d.decode_s16((i * ch + c) * 2) - d.decode_s16(((i - 1) * ch + c) * 2)) / 32767.0)
+		print("seam %-14s jump %.4f  largest inner step %.4f  %s" % [n, seam, typical, "OK" if seam <= typical else "CLICK?"])

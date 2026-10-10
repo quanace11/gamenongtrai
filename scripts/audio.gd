@@ -13,7 +13,7 @@ extends Node
 const L = preload("res://scripts/layout.gd")
 
 const RATE := 44100
-const CACHE_VERSION := 3
+const CACHE_VERSION := 5
 const CACHE_DIR := "user://audio_cache"
 const ONE_SHOT_PEAK := 0.7 # -3 dBFS ceiling for any one-shot
 const BED_RMS := 0.1 # -20 dBFS: beds are levelled, then mixed by BED_DB
@@ -133,6 +133,10 @@ func play(name: String, volume_db := 0.0, pitch := 1.0) -> void:
 		name = "step_" + s
 		volume_db += {"dry": 0.0, "grass": -1.0, "brick": -2.0, "mud": 0.0, "wade": 1.0}[s]
 		pitch *= _rng.randf_range(0.93, 1.07)
+	elif name == "oink" and pitch < 0.8 and _node("buffalo") != null:
+		# main.gd plays a low "oink" when the player pats the buffalo.
+		play_at("buffalo_call", _node("buffalo").global_transform * Vector3(0, 1.1, 1.4), volume_db, 1.0, 6.0)
+		return
 	elif name == "oink" and _node("pig") != null:
 		play_at("pig", _node("pig").global_position + Vector3(0.7, 0.5, 0), volume_db, pitch, 3.0)
 		return
@@ -843,15 +847,19 @@ func _src(dur: float, contour: Array, rough := 0.0, rough_hz := 30.0, breath := 
 	return out
 
 
-# Vocal tract: a sum of band-pass resonances [[hz, q, gain], ...].
+# Vocal tract: a sum of band-pass resonances [[hz, q, gain], ...]. A steep
+# low-pass above the top formant gives the spectral tilt of a real throat;
+# without it the sawtooth's upper harmonics make every call buzz.
 func _formants(src: PackedFloat32Array, list: Array) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	out.resize(src.size())
+	var top := 0.0
 	for fm in list:
+		top = maxf(top, fm[0])
 		var y := _filt(src, "bp", fm[0], fm[1])
 		for i in y.size():
 			out[i] += y[i] * fm[2]
-	return out
+	return _filt(_filt(out, "lp", top * 1.4), "lp", top * 1.6)
 
 
 # A decaying sine ring (wood, ceramic) added into dst at sample `at` (wraps).
@@ -1003,7 +1011,7 @@ func _buffalo_call() -> PackedFloat32Array:
 	var f := _srng.randf_range(85, 105)
 	var s := _src(d, [[0, f], [0.25, f * 1.3], [0.7, f * 1.22], [1, f * 0.8]], 0.25, 22.0, 0.08)
 	var b := _formants(s, [[330, 4.0, 1.0], [720, 5.0, 0.5], [1750, 6.0, 0.12]])
-	_mix(b, _noise(d, "bp", 500, 300, 1.0, 0.08, 0.3, true))
+	_mix(b, _filt(_noise(d, "bp", 500, 300, 1.0, 0.08, 0.3, true), "lp", 1200.0))
 	return _fade(b, 0.18, 0.5)
 
 
@@ -1253,7 +1261,7 @@ func _bed_cicadas() -> PackedFloat32Array:
 			if e > 0.0:
 				src[_n(k) % n] += e * _srng.randf_range(0.7, 1.0)
 			k += step
-		var y := _filt_loop(_filt_loop(src, "bp", f, 6.0), "bp", f * 1.02, 3.0)
+		var y := _filt_loop(_filt_loop(_filt_loop(src, "bp", f, 6.0), "bp", f * 1.02, 3.0), "hp", 3000.0)
 		for i in n:
 			out[i] += y[i] * amp
 	return out
@@ -1300,7 +1308,7 @@ func _bed_rain_field() -> PackedFloat32Array:
 	var rumble := _noise(float(tot) / RATE, "lp", 300, 300, 0.7, 0.25, 0.0, true)
 	for i in tot:
 		hiss[i] += rumble[i]
-	var b := _loopify(hiss, n)
+	var b := _filt_loop(_loopify(hiss, n), "lp", 9000.0)
 	for k in 1800:
 		_bubble(b, _srng.randi() % n, _srng.randf_range(1400, 5000), _srng.randf_range(0.006, 0.02), _srng.randf_range(0.02, 0.18))
 	for k in 260:
@@ -1416,15 +1424,17 @@ func _loop_moto() -> PackedFloat32Array:
 	var n := int(round(76.0 / fire * RATE))
 	var b := PackedFloat32Array()
 	b.resize(n)
-	var pulse := _fade(_noise(0.012, "lp", 900, 400, 0.7, 1.0, 0.0008), 0.0005, 0.004)
+	# Each firing: an exhaust thump ringing the muffler, with a little blast noise.
 	for k in 76:
-		_wrap_add(b, pulse, int(k * n / 76.0), _srng.randf_range(0.75, 1.0))
-	var body := _filt(b, "bp", 160.0, 1.5)
-	var muf := _filt(b, "lp", 1100.0)
-	var mech := _loopify(_noise(float(n + 2000) / RATE, "bp", 2600, 2600, 1.0, 0.04, 0.0, true), n)
+		var at := int(k * n / 76.0)
+		var a := _srng.randf_range(0.75, 1.0)
+		_ring(b, at, 125.0, 0.006, a)
+		_ring(b, at, 330.0, 0.003, a * 0.4)
+		_wrap_add(b, _noise(0.006, "lp", 1500, 600, 0.7, 0.35, 0.0005), at, a)
+	var mech := _loopify(_noise(float(n + 2000) / RATE, "bp", 2400, 2400, 1.0, 0.012, 0.0, true), n)
 	for i in n:
-		body[i] = body[i] * 1.2 + muf[i] * 0.6 + mech[i]
-	return body
+		b[i] += mech[i]
+	return _filt_loop(b, "lp", 2500.0)
 
 
 # ------------------------------------------------------------ village voices
