@@ -22,11 +22,11 @@ uniform vec4 map_rect = vec4(-40.0, -44.0, 80.0, 80.0); // x0, z0, width, depth
 uniform sampler2D grass_mask : filter_linear, repeat_disable;  // R density, G dryness, B tall, A trodden
 uniform sampler2D height_map : filter_linear, repeat_disable;  // R ground height (m)
 uniform sampler2D noise : filter_linear_mipmap, repeat_enable; // shared wind / patch noise
-uniform float blade_height = 0.16;
+uniform float blade_height = 0.18;
 uniform float blade_width = 0.0028;  // half width at the root
 uniform float far_widen = 1.6;       // extra width at fade_end, against shimmer
-uniform vec3 lush : source_color = vec3(0.27, 0.43, 0.11);
-uniform vec3 fresh : source_color = vec3(0.45, 0.57, 0.19);
+uniform vec3 lush : source_color = vec3(0.22, 0.40, 0.10);
+uniform vec3 fresh : source_color = vec3(0.38, 0.54, 0.16);
 uniform vec3 dry : source_color = vec3(0.60, 0.53, 0.31);
 uniform vec3 soil : source_color = vec3(0.30, 0.25, 0.17);
 

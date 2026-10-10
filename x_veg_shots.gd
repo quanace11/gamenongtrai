@@ -118,6 +118,22 @@ func _go() -> void:
 					await m._look_at(13, -12.3, 13, -16, -0.45)
 					await m._set_time(10.0)
 					await m._shot("nursery")
+				elif id == "w":
+					await m._look_at(-1.2, -18.6, -2.6, -21.3, -0.35)
+					await m._set_time(10.0)
+					await m._shot("fern-pots")
+				elif id == "x":
+					var best: Vector3 = Vector3.ZERO
+					for n in m.find_children("*", "MultiMeshInstance3D", true, false):
+						var mi := n as MultiMeshInstance3D
+						if mi.visibility_range_end == 40.0 and mi.multimesh.instance_count > 1 and mi.multimesh.mesh is ArrayMesh and (mi.multimesh.mesh as ArrayMesh).get_surface_count() > 0:
+							var o := mi.multimesh.get_instance_transform(0).origin
+							if best == Vector3.ZERO or o.length() < best.length():
+								best = o
+					print("WEED at ", best)
+					await m._look_at(best.x + 1.6, best.z + 1.6, best.x, best.z, -0.4)
+					await m._set_time(10.0)
+					await m._shot("weeds")
 				elif id.begins_with("k"):
 					await m._look_at(-15.0, -8.0, -19.0, -12.5, -0.5)
 					await m._set_time(10.0)

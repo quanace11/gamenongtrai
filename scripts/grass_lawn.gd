@@ -28,8 +28,8 @@ func _ready() -> void:
 	add_to_group("quality")
 	var maps := _paint()
 	var nz := F.wind_noise()
-	_near = _patch(24.0, 3, Vector2(8.5, 11.5), Vector2.ZERO, 0.0055, maps, nz)
-	_far = _patch(48.0, 2, Vector2(18.0, 23.0), Vector2(8.0, 11.0), 0.0095, maps, nz)
+	_near = _patch(24.0, 3, Vector2(8.5, 11.5), Vector2.ZERO, 0.0068, maps, nz)
+	_far = _patch(48.0, 2, Vector2(18.0, 23.0), Vector2(8.0, 11.0), 0.011, maps, nz)
 	set_quality(2)
 
 
@@ -183,7 +183,7 @@ func _paint() -> Array:
 			dens *= 1.0 - 0.75 * path
 			var sh := shade[py * RES + px]
 			dens *= 1.0 - 0.6 * sh
-			var dryness := clampf(0.1 + 0.45 * (1.0 - n) * (1.0 - tall) + 0.35 * sh, 0.0, 1.0)
+			var dryness := clampf(0.05 + 0.32 * (1.0 - n) * (1.0 - tall) + 0.35 * sh, 0.0, 1.0)
 			img.set_pixel(px, py, Color(clampf(dens, 0.0, 1.0), dryness, tall, path))
 	return [ImageTexture.create_from_image(img), ImageTexture.create_from_image(hmap)]
 
