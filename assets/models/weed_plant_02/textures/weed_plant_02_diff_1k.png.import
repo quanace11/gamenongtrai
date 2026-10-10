@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://rc53ewiilyiy"
-path.s3tc="res://.godot/imported/fern_02_diff_1k.jpg-0b286f74876de2d71ef5d62ed3a1e15d.s3tc.ctex"
+uid="uid://dge0qvbjhiei5"
+path="res://.godot/imported/weed_plant_02_diff_1k.png-8353539726b5fdb5dea36b85a5175b4d.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/fern_02/textures/fern_02_diff_1k.jpg"
-dest_files=["res://.godot/imported/fern_02_diff_1k.jpg-0b286f74876de2d71ef5d62ed3a1e15d.s3tc.ctex"]
+source_file="res://assets/models/weed_plant_02/textures/weed_plant_02_diff_1k.png"
+dest_files=["res://.godot/imported/weed_plant_02_diff_1k.png-8353539726b5fdb5dea36b85a5175b4d.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -24,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

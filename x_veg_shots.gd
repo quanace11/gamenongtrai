@@ -1,0 +1,122 @@
+extends SceneTree
+# Throwaway: take selected tour-like shots. Args after --: --shots=DIR --only=a,b,c
+
+var m
+
+
+func _initialize() -> void:
+	m = load("res://scenes/main.tscn").instantiate()
+	root.add_child(m)
+	_go.call_deferred()
+
+
+func _arg(k: String) -> String:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with(k + "="):
+			return a.substr(k.length() + 1)
+	return ""
+
+
+func _go() -> void:
+	await process_frame
+	var only := _arg("--only").split(",")
+	m._on_play()
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	m._hide_hud(true)
+	for id in only:
+		match id:
+			"1":
+				await m._look_at(-3, -10.5, 2, 2, -0.15)
+				await m._set_time(7.0)
+				await m._shot("tour-1-dry-field")
+			"2":
+				await m._look_at(6, -11, 0, -24, -0.05)
+				await m._set_time(9.0)
+				await m._shot("tour-2-house")
+			"12":
+				m._debug_skip_prep()
+				m.field.water = 5.0
+				await m._look_at(-7.5, 7.5, 8, -6, -0.1)
+				await m._set_time(8.0)
+				await m._shot("tour-12-flooded-mirror")
+			"3":
+				_plant(2)
+				await m._look_at(-7.5, 9.0, 2, -4, -0.18)
+				await m._set_time(10.0)
+				await m._shot("tour-3-young-rice")
+			"4":
+				await m._look_at(-14.5, -4, -21, -11, -0.15)
+				await m._set_time(11.0)
+				await m._shot("tour-4-pond")
+			"5":
+				_plant(8)
+				await m._look_at(7.5, 3, -4, -1, -0.12)
+				await m._set_time(16.8)
+				await m._shot("tour-5-ripe-golden-hour")
+			"6":
+				_plant(8)
+				await m._look_at(0, -6, 0, 0, -0.35)
+				await m._set_time(12.0)
+				m._select_tool("liem")
+				await m._shot("tour-6-sickle")
+				m._select_tool("tay")
+			"14":
+				await m._look_at(12, -9, 20, -14, -0.25)
+				await m._set_time(11.0)
+				await m._shot("tour-14-lawn")
+			"15":
+				await m._look_at(0, 9.3, 0, 60, 0.03)
+				await m._set_time(9.5)
+				await m._shot("tour-15-far-karst")
+			"10":
+				_plant(8)
+				await m._look_at(7, -2, -8, -2, -0.05)
+				await m._set_time(17.85)
+				await m._shot("tour-10-sunset")
+			"11":
+				_plant(8)
+				await m._look_at(7, -2, -8, -2, -0.05)
+				await m._set_time(22.0)
+				await m._shot("tour-11-night")
+			_:
+				# rice close-ups: r<day> e.g. r0 r2 r4 r6 r8, rc = harvested
+				if id.begins_with("r"):
+					var d := id.substr(1)
+					if d == "c":
+						_plant(8)
+						for c in m.field.clumps:
+							if c.z > -2.0:
+								c.cut = true
+						m.field.rice_dirty = true
+					else:
+						_plant(int(d))
+					await m._look_at(-6.9, 8.3, -4.5, 4.0, -0.3)
+					await m._set_time(9.5 if d != "8" else 16.5)
+					await m._shot("rice-close-" + d)
+				elif id.begins_with("n"):
+					# nursery bed at day state
+					m.nursery.state = "ready"
+					m._refresh_nursery()
+					await m._look_at(13, -12.3, 13, -16, -0.45)
+					await m._set_time(10.0)
+					await m._shot("nursery")
+				elif id.begins_with("b"):
+					await m._look_at(18, -18, 24, -26, 0.12)
+					await m._set_time(10.0)
+					await m._shot("bamboo-close")
+				elif id.begins_with("p"):
+					await m._look_at(-10, -16, -17, -6, 0.05)
+					await m._set_time(10.5)
+					await m._shot("palms")
+	print("VEG SHOTS DONE")
+	OS.kill(OS.get_process_id())
+	quit()
+
+
+func _plant(day: int) -> void:
+	if m.field.clumps.is_empty():
+		m._debug_skip_prep()
+		m._debug_plant_all()
+	m.field.water = 4.0
+	m.field.growth_day = day
+	m.field.rice_dirty = true

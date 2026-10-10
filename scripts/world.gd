@@ -98,9 +98,7 @@ static func place_part(parent: Node3D, id: String, pos: Vector3, scale := 1.0, y
 			best = p
 	var mi := MeshInstance3D.new()
 	mi.mesh = best.mesh
-	mi.position = pos
-	mi.scale = Vector3.ONE * scale
-	mi.rotation.y = yaw
+	mi.transform = Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale), pos) * best.xf
 	parent.add_child(mi)
 	return mi
 
@@ -678,18 +676,25 @@ static func _plants(root: Node3D) -> void:
 			shrubs.append(pt)
 		else:
 			weeds.append(pt)
-	for i in 24:
+	# River stones on the pond rim and canal banks: grey, half buried, a few
+	# small ones beside each bigger one.
+	for i in 22:
 		var a := rng.randf() * TAU
-		var r: float = L.POND.r + rng.randf_range(0.4, 1.2)
-		rocks.append([Vector3(L.POND.x + cos(a) * r, -0.06, L.POND.z + sin(a) * r), rng.randf() * TAU, rng.randf_range(1.2, 2.4)])
-	for i in 30:
-		rocks.append([Vector3([L.CANAL.x0 - 0.4, L.CANAL.x1 + 0.4][i % 2], -0.06, rng.randf_range(-30, 26)), rng.randf() * TAU, rng.randf_range(1.2, 2.2)])
-	A.scatter(root, "weed_plant_02", weeds)
-	A.scatter(root, "nettle_plant", weeds.slice(0, weeds.size() / 2))
-	A.scatter(root, "shrub_04", shrubs)
-	A.scatter(root, "fern_02", shrubs)
-	A.scatter(root, "rock_07", rocks)
-	A.scatter(root, "stone_01", rocks.slice(0, 20))
+		var r: float = L.POND.r + rng.randf_range(0.25, 0.9)
+		rocks.append([Vector3(L.POND.x + cos(a) * r, 0.0, L.POND.z + sin(a) * r), rng.randf() * TAU, rng.randf_range(0.8, 1.7)])
+	for i in 26:
+		rocks.append([Vector3([L.CANAL.x0 - 0.35, L.CANAL.x1 + 0.35][i % 2] + rng.randf_range(-0.15, 0.15), 0.0, rng.randf_range(-30, 26)), rng.randf() * TAU, rng.randf_range(0.8, 1.6)])
+	var pebbles := []
+	for p in rocks:
+		for k in 2:
+			var o := Vector3(rng.randf_range(-0.5, 0.5), 0.0, rng.randf_range(-0.5, 0.5))
+			pebbles.append([p[0] + o, rng.randf() * TAU, rng.randf_range(0.6, 1.2)])
+	A.scatter(root, "weed_plant_02", weeds, true, 30.0)
+	A.scatter(root, "nettle_plant", weeds.slice(0, weeds.size() / 2), true, 30.0)
+	A.scatter(root, "shrub_04", shrubs, true, 40.0)
+	A.scatter(root, "fern_02", shrubs, true, 40.0)
+	A.scatter(root, "rock_07", rocks, true, 45.0, 0.4, A.recolor("rock_07", 0.25, Color(0.84, 0.87, 0.9), 0.95))
+	A.scatter(root, "stone_01", pebbles, false, 25.0, 0.35, A.recolor("stone_01", 0.2, Color(0.8, 0.82, 0.84), 0.9))
 
 
 static func _clear_for_grass(x: float, z: float) -> bool:
