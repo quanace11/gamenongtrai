@@ -49,11 +49,11 @@ void fragment() {
 	vec2 uv = abs(wnrm.y) > 0.7 ? wpos.xz : vec2(h, -wpos.y);
 	vec3 alb = texture(plaster_alb, uv / tile).rgb * tint;
 	// Faded wash: less saturated than the fresh plaster photo.
-	alb = mix(vec3(dot(alb, vec3(0.3, 0.55, 0.15))), alb, 0.62) * 1.12;
+	alb = mix(vec3(dot(alb, vec3(0.3, 0.55, 0.15))), alb, 0.85) * 1.12;
 	// Rain blotches and lime-wash patches from a weathered-wall photo.
 	vec3 st = texture(stain_alb, uv / 3.3 + 0.21).rgb;
 	float stain = dot(st, vec3(0.3, 0.55, 0.15)) / 0.21;
-	alb *= mix(0.55, 1.1, clamp(stain, 0.0, 1.4) / 1.4);
+	alb *= mix(0.62, 1.1, clamp(stain, 0.0, 1.4) / 1.4);
 	// Faint green from the mossy photo shows through in the darkest blotches.
 	alb = mix(alb, alb * vec3(0.8, 0.95, 0.7), smoothstep(0.7, 0.3, stain) * 0.5);
 

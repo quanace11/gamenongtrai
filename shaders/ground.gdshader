@@ -141,11 +141,11 @@ void fragment() {
 	// The photo is a brown autumn lawn; push it to the humid delta green
 	// (about sRGB 96,119,47) while keeping its blade detail.
 	float gl = dot(ga, vec3(0.3, 0.55, 0.15));
-	vec3 lawn = vec3(0.115, 0.17, 0.03) * mix(ga / vec3(0.079, 0.046, 0.009), vec3(gl / 0.05), 0.55);
+	vec3 lawn = vec3(0.09, 0.125, 0.03) * mix(ga / vec3(0.079, 0.046, 0.009), vec3(gl / 0.05), 0.55);
 	// Macro patches: lusher, drier and sun-bleached grass.
 	float m1 = vnoise(p * 0.045 + 9.0);
 	float m2 = fbm(p * 0.012 + 3.0);
-	lawn *= mix(0.78, 1.12, m2);
+	lawn *= mix(0.7, 1.1, m2);
 	lawn = mix(lawn, lawn * vec3(1.35, 1.12, 0.8), smoothstep(0.55, 0.85, m1) * 0.7);
 	lawn = mix(lawn, lawn * vec3(0.8, 0.95, 0.7), smoothstep(0.5, 0.2, m1) * 0.5);
 
@@ -201,7 +201,7 @@ void fragment() {
 	float damp = (1.0 - smoothstep(0.0, 1.5, pd - pr)) * 0.6;
 	damp = max(damp, (1.0 - smoothstep(0.9, 1.6, cd)) * 0.4);
 	float w_all = clamp(max(max(wet, damp), wetness * 0.8 + rain_amount * 0.2), 0.0, 1.0);
-	alb *= mix(1.0, 0.5, w_all);
+	alb *= mix(1.0, 0.62, w_all);
 	float rough = mix(arm.g, 0.22, max(wet, wetness * 0.5) * 0.85);
 
 	// ---- far: paddies, jittered strips of plots

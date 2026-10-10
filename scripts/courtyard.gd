@@ -24,10 +24,6 @@ func _ready() -> void:
 	moist.resize(C * R)
 	moist.fill(1.0)
 	soaked.resize(C * R)
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.vertex_color_is_srgb = true
-	m.roughness = 0.78
 	# Grain-sized bumps (about 6 mm cells) so the layer reads as loose paddy.
 	var n := FastNoiseLite.new()
 	n.noise_type = FastNoiseLite.TYPE_CELLULAR
@@ -40,12 +36,9 @@ func _ready() -> void:
 	nt.as_normal_map = true
 	nt.bump_strength = 6.0
 	nt.noise = n
-	m.normal_enabled = true
-	m.normal_texture = nt
-	m.normal_scale = 0.9
-	m.uv1_triplanar = true
-	m.uv1_world_triplanar = true
-	m.uv1_scale = Vector3.ONE * 4.0
+	var m := ShaderMaterial.new()
+	m.shader = preload("res://shaders/grain.gdshader")
+	m.set_shader_parameter("grain_nor", nt)
 	_mesh_i = MeshInstance3D.new()
 	_mesh_i.material_override = m
 	add_child(_mesh_i)
@@ -264,16 +257,15 @@ func refresh() -> void:
 			var h := 0.0
 			if raw > 0.05:
 				h = m * KG_H
-				# Rake furrows across the layer, strongest where it is thin.
-				var thin := clampf(1.0 - h / 0.06, 0.0, 1.0)
-				h += (sin(u * 38.0 + sin(v * 3.0) * 0.6) * 0.5 + 0.5) * 0.006 * thin * clampf(h / 0.008, 0.0, 1.0)
 				h += 0.003 * sin(u * 91.0 + v * 57.0) * sin(v * 83.0 - u * 23.0)
 				any = true
 			hs[vj * nx + vi] = h
 			var wet := clampf(_sample(moist, u, v) - 0.14, 0.0, 1.0)
-			var col := Color(0.74, 0.6, 0.34).lerp(Color(0.52, 0.42, 0.24), wet)
+			var col := Color(0.74, 0.6, 0.33).lerp(Color(0.52, 0.42, 0.24), wet)
 			col = col.lerp(Color(0.45, 0.52, 0.3), _sample(soaked, u, v) * 0.8)
 			col = col.darkened(0.06 * sin(u * 7.3 + v * 5.1) * sin(v * 6.7 - u * 2.9))
+			# Alpha: rake furrows show where the layer is thin, not on heaps.
+			col.a = clampf(1.0 - m * KG_H / 0.06, 0.0, 1.0) * clampf(m * KG_H / 0.006, 0.0, 1.0)
 			cols[vj * nx + vi] = col
 	_mesh_i.visible = any
 	if not any:

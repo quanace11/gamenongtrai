@@ -8,8 +8,8 @@ render_mode diffuse_burley;
 
 uniform sampler2D rock_alb : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D rock_nor : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec3 jungle : source_color = vec3(0.32, 0.4, 0.2);
-uniform vec3 limestone : source_color = vec3(0.68, 0.67, 0.63);
+uniform vec3 jungle : source_color = vec3(0.24, 0.32, 0.14);
+uniform vec3 limestone : source_color = vec3(0.5, 0.5, 0.47);
 
 varying vec3 wpos;
 varying vec3 wnrm;
@@ -45,7 +45,7 @@ void fragment() {
 	// Dark run-off streaks and orange-grey staining on the cliffs.
 	float streak = smoothstep(0.5, 0.85, vnoise(vec2(h * 0.35, wpos.y * 0.02)) * 0.7 + vnoise(vec2(h * 1.3, wpos.y * 0.06)) * 0.3);
 	vec3 rock = limestone * mix(0.75, 1.15, l);
-	rock = mix(rock, vec3(0.3, 0.3, 0.28), streak * 0.65);
+	rock = mix(rock, vec3(0.2, 0.21, 0.2), streak * 0.75);
 	rock = mix(rock, rock * vec3(1.05, 0.95, 0.85), smoothstep(0.5, 0.8, vnoise(wpos.xy * 0.03 + wpos.zy * 0.02)) * 0.4);
 	// Jungle: clumpy canopy, darker in the gaps.
 	float canopy = vnoise(wpos.xz * 0.25 + wpos.y * 0.1) * 0.6 + vnoise(wpos.xz * 0.9 - wpos.y * 0.3) * 0.4;

@@ -629,6 +629,7 @@ static func _house(root: Node3D, h: Dictionary) -> void:
 	for x in [-4.6, -1.6, 1.6, 4.6]:
 		mcyl(root, 0.11, 0.12, 2.75, wood, Vector3(x, 1.72, -21.6), 14)
 		mcyl(root, 0.17, 0.2, 0.14, stone, Vector3(x, 0.37, -21.6), 12) # chân tảng
+		_shadow_decal(root, Vector3(x, 0.3, -21.6), Vector2(0.75, 0.75), 0.6)
 	mbox(root, Vector3(10.2, 0.2, 0.16), wood, Vector3(0, 3.0, -21.6)) # xà hiên
 	for x in [-4.6, -1.6, 1.6, 4.6]:
 		mbox(root, Vector3(0.1, 0.12, 1.0), wood, Vector3(x, 2.94, -22.1)) # kẻ hiên into the wall
@@ -812,6 +813,7 @@ static func _props(root: Node3D, h: Dictionary) -> void:
 		egg.material_override = egg_m
 		egg.visible = false
 		h.eggs.append(egg)
+		_shadow_decal(root, Vector3(s.x, L.FIELD.y, s.y), Vector2(0.3, 0.3), 0.5)
 
 	# Thùng đập lúa: big wooden tub with a bamboo screen behind
 	place(root, "wooden_bucket_02", Vector3(L.BARREL.x, 0.0, L.BARREL.y), 1.8)
@@ -1049,7 +1051,7 @@ static func _buffalo(root: Node3D) -> Node3D:
 	root.add_child(buff)
 	var hide := Color(0.3, 0.29, 0.29)
 	var pale := Color(0.45, 0.43, 0.41)
-	var mud := Color(0.33, 0.26, 0.19)
+	var mud := Color(0.3, 0.24, 0.17)
 	var noise := FastNoiseLite.new()
 	noise.frequency = 6.0
 	var paint := func(p: Vector3) -> Color:
@@ -1057,7 +1059,7 @@ static func _buffalo(root: Node3D) -> Node3D:
 		# Pale chevron across the throat.
 		if p.x > 0.95 and p.y < 0.86 and absf(p.y - (0.9 - (p.x - 0.95) * 0.5)) < 0.05:
 			c = Color(0.62, 0.58, 0.55)
-		var m := smoothstep(0.5, 0.35, p.y + noise.get_noise_3d(p.x, p.y, p.z) * 0.08)
+		var m := smoothstep(0.52, 0.36, p.y + noise.get_noise_3d(p.x, p.y, p.z) * 0.08)
 		c = c.lerp(mud, m * 0.9)
 		return c.darkened(noise.get_noise_3d(p.x * 0.3, p.y * 0.3, p.z * 0.3) * 0.08)
 	var skin := _skin(0.72)
@@ -1085,12 +1087,12 @@ static func _buffalo(root: Node3D) -> Node3D:
 			var w: float = leg[2]
 			var lm := MeshInstance3D.new()
 			lm.mesh = loft([
-				[Vector3(x, 0.85, s * 0.27), 0.15 * w, 0.17 * w],
-				[Vector3(x + b * 0.4, 0.58, s * 0.26), 0.11 * w, 0.12 * w],
-				[Vector3(x + b, 0.42, s * 0.25), 0.075, 0.085],
-				[Vector3(x + b * 0.6, 0.2, s * 0.25), 0.06, 0.065],
-				[Vector3(x + b * 0.55, 0.09, s * 0.25), 0.068, 0.07],
-				[Vector3(x + b * 0.5 + 0.02, 0.0, s * 0.25), 0.075, 0.07],
+				[Vector3(x, 0.85, s * 0.26), 0.2 * w, 0.22 * w],
+				[Vector3(x + b * 0.4, 0.58, s * 0.26), 0.14 * w, 0.15 * w],
+				[Vector3(x + b, 0.42, s * 0.25), 0.1, 0.11],
+				[Vector3(x + b * 0.6, 0.2, s * 0.25), 0.075, 0.08],
+				[Vector3(x + b * 0.55, 0.09, s * 0.25), 0.085, 0.085],
+				[Vector3(x + b * 0.5 + 0.02, 0.0, s * 0.25), 0.09, 0.085],
 			], 10, paint, Vector3(1, 0, 0))
 			lm.material_override = skin
 			buff.add_child(lm)
@@ -1100,12 +1102,12 @@ static func _buffalo(root: Node3D) -> Node3D:
 	buff.add_child(head)
 	var hm := MeshInstance3D.new()
 	hm.mesh = loft([
-		[Vector3(0.0, 0.0, 0), 0.17, 0.2],
-		[Vector3(0.12, -0.02, 0), 0.19, 0.21],
-		[Vector3(0.27, -0.08, 0), 0.16, 0.17],
-		[Vector3(0.43, -0.17, 0), 0.12, 0.13],
-		[Vector3(0.57, -0.25, 0), 0.115, 0.105],
-		[Vector3(0.66, -0.29, 0), 0.105, 0.085],
+		[Vector3(0.0, 0.0, 0), 0.2, 0.23],
+		[Vector3(0.14, -0.01, 0), 0.22, 0.24],
+		[Vector3(0.3, -0.08, 0), 0.18, 0.19],
+		[Vector3(0.48, -0.18, 0), 0.135, 0.145],
+		[Vector3(0.63, -0.27, 0), 0.13, 0.115],
+		[Vector3(0.73, -0.31, 0), 0.115, 0.09],
 	], 16, func(p: Vector3) -> Color:
 		var c: Color = paint.call(p + Vector3(1.3, 0.88, 0))
 		return c.lerp(Color(0.1, 0.095, 0.09), smoothstep(0.5, 0.62, p.x))) # dark wet muzzle
@@ -1120,23 +1122,26 @@ static func _buffalo(root: Node3D) -> Node3D:
 	horn_m.uv1_triplanar = true
 	horn_m.uv1_scale = Vector3(6, 6, 6)
 	var eye_m := mat(Color(0.03, 0.025, 0.02))
+	var ear_m := StandardMaterial3D.new()
+	ear_m.albedo_color = hide
+	ear_m.roughness = 0.75
 	for s in [-1.0, 1.0]:
 		# Crescent horn: out, back and a little up, tapering to a point.
 		var secs := []
 		for k in 11:
 			var t := k / 10.0
-			var th := t * 2.5
-			var r := 0.4
-			var p := Vector3(0.12 + r * (cos(th) - 1.0) * 0.85, 0.15 + 0.1 * t + 0.08 * sin(th), s * (0.13 + r * sin(th)))
-			secs.append([p, lerpf(0.065, 0.012, t), lerpf(0.05, 0.012, t)])
+			var th := t * 2.6
+			var r := 0.5
+			var p := Vector3(0.14 + r * (cos(th) - 1.0) * 0.85, 0.17 + 0.12 * t + 0.1 * sin(th), s * (0.14 + r * sin(th)))
+			secs.append([p, lerpf(0.095, 0.014, t), lerpf(0.07, 0.014, t)])
 		var hn := MeshInstance3D.new()
 		hn.mesh = loft(secs, 10, func(_p: Vector3) -> Color: return Color.WHITE, Vector3.UP)
 		hn.material_override = horn_m
 		head.add_child(hn)
-		var ear := sphere(head, 0.1, Color.WHITE, Vector3(0.04, 0.05, s * 0.25), Vector3(0.45, 0.25, 1.0))
+		var ear := sphere(head, 0.11, Color.WHITE, Vector3(0.05, 0.04, s * 0.28), Vector3(0.45, 0.25, 1.0))
 		ear.rotation = Vector3(s * 0.35, 0, 0)
-		ear.material_override = skin
-		sphere(head, 0.025, Color.WHITE, Vector3(0.22, 0.02, s * 0.15)).material_override = eye_m
+		ear.material_override = ear_m
+		sphere(head, 0.028, Color.WHITE, Vector3(0.24, 0.03, s * 0.175)).material_override = eye_m
 	var tail := MeshInstance3D.new()
 	tail.mesh = loft([
 		[Vector3(-1.25, 1.08, 0), 0.04, 0.04],
@@ -1273,11 +1278,12 @@ static func _hills(root: Node3D) -> void:
 		for k in n:
 			var a: float = c[0] + rng.randf_range(-0.2, 0.2)
 			var r: float = c[1] + rng.randf_range(-45.0, 45.0)
-			var hgt := rng.randf_range(50.0, 105.0)
-			towers.append([a, r, hgt, hgt * rng.randf_range(0.32, 0.5), 56, 40])
+			var hgt := rng.randf_range(38.0, 80.0)
+			towers.append([a, r, hgt, hgt * rng.randf_range(0.36, 0.52), 56, 40])
 	for k in 24:
 		var a := k / 24.0 * TAU + rng.randf_range(-0.1, 0.1)
-		towers.append([a, rng.randf_range(380.0, 550.0), rng.randf_range(90.0, 170.0), rng.randf_range(35.0, 65.0), 32, 24])
+		var fh := rng.randf_range(70.0, 140.0)
+		towers.append([a, rng.randf_range(380.0, 550.0), fh, fh * rng.randf_range(0.4, 0.6), 32, 24])
 	for i in towers.size():
 		var t: Array = towers[i]
 		var mi := MeshInstance3D.new()
@@ -1299,7 +1305,7 @@ static func _tower(noise: FastNoiseLite, i: int, rad: float, hgt: float, segs: i
 	var arr := sm.get_mesh_arrays()
 	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 	var lean := Vector2(rng.randf_range(-0.15, 0.15), rng.randf_range(-0.15, 0.15))
-	var crown := rng.randf_range(4.0, 8.0) # higher = flatter, squarer top
+	var crown := rng.randf_range(4.0, 7.0) # higher = flatter, squarer top
 	for k in verts.size():
 		var v := verts[k]
 		var y := maxf(v.y, -0.25)
@@ -1307,10 +1313,10 @@ static func _tower(noise: FastNoiseLite, i: int, rad: float, hgt: float, segs: i
 		var w := sqrt(maxf(0.0, 1.0 - pow(clampf(y, 0.0, 1.0), crown))) if y > 0.0 else 1.0
 		w *= 1.0 + 0.35 * (1.0 - smoothstep(-0.25, 0.12, y))
 		# Vertical fluting and horizontal ledges from ridged noise, lumps on the crown.
-		var n := noise.get_noise_3d(v.x * 1.5 + i * 13.0, y * 0.5, v.z * 1.5) * 0.3
-		n += noise.get_noise_3d(v.x * 6.0 + i * 7.0, y * 4.0, v.z * 6.0) * 0.1
-		var lump := noise.get_noise_3d(v.x * 0.8 + i * 3.0, 9.0, v.z * 0.8) * 0.25
-		var yy := (y + 0.25) * hgt * (1.0 + lump * smoothstep(0.3, 1.0, y) + n * 0.15)
+		var n := noise.get_noise_3d(v.x * 1.5 + i * 13.0, y * 0.5, v.z * 1.5) * 0.22
+		n += noise.get_noise_3d(v.x * 6.0 + i * 7.0, y * 4.0, v.z * 6.0) * 0.08
+		var lump := noise.get_noise_3d(v.x * 0.7 + i * 3.0, 9.0, v.z * 0.7) * 0.18
+		var yy := (y + 0.25) * hgt * (1.0 + lump * smoothstep(0.5, 1.0, y) + n * 0.06)
 		verts[k] = Vector3(v.x * rad * w * (1.0 + n) + lean.x * yy, yy, v.z * rad * w * (1.0 + n) + lean.y * yy)
 	arr[Mesh.ARRAY_VERTEX] = verts
 	arr[Mesh.ARRAY_NORMAL] = null
@@ -1326,9 +1332,10 @@ static func _tower(noise: FastNoiseLite, i: int, rad: float, hgt: float, segs: i
 	cols.resize(verts.size())
 	for k in verts.size():
 		# Jungle on anything flat enough to hold soil, and on the scree at the foot.
-		var g := smoothstep(0.3, 0.65, nrm[k].y)
-		g = maxf(g, 1.0 - smoothstep(0.06, 0.18, verts[k].y / hgt))
-		g = maxf(g, smoothstep(0.55, 0.9, noise.get_noise_3d(verts[k].x * 0.05, verts[k].y * 0.08, verts[k].z * 0.05) * 0.5 + 0.5) * 0.7)
+		# Only the sheerest faces stay bare; scrub clings to everything else.
+		var bare := noise.get_noise_3d(verts[k].x * 0.06, verts[k].y * 0.012, verts[k].z * 0.06) * 0.35
+		var g := smoothstep(0.0, 0.4, nrm[k].y + bare)
+		g = maxf(g, 1.0 - smoothstep(0.08, 0.22, verts[k].y / hgt))
 		cols[k] = Color(g, 0, 0)
 	arr[Mesh.ARRAY_COLOR] = cols
 	var mesh := ArrayMesh.new()
