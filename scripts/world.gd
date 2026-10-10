@@ -694,7 +694,7 @@ static func _trees(root: Node3D) -> void:
 	for g in groves:
 		F.bamboo(root, Vector3(g.x, 0, g.y), rng, rng.randf_range(0.85, 1.1))
 	for p in [Vector2(8, -24), Vector2(11, -23), Vector2(-12, -18), Vector2(17, -12), Vector2(-15, 3), Vector2(-24, -14), Vector2(7, -31),
-			Vector2(-9, -31), Vector2(14, -27), Vector2(-22, -21), Vector2(19, -20), Vector2(-27, -2), Vector2(24, 4)]:
+			Vector2(-9, -31), Vector2(14, -27), Vector2(-22, -21), Vector2(21, -16), Vector2(-27, -2), Vector2(24, 4)]:
 		F.banana(root, Vector3(p.x, 0, p.y), rng)
 	for p in [Vector2(-8, -30), Vector2(7, -29), Vector2(-14, 14), Vector2(15, -2), Vector2(-24, -18), Vector2(-3, -31), Vector2(18, -24), Vector2(-29, 8)]:
 		F.palm(root, Vector3(p.x, 0, p.y), rng, false)
@@ -712,15 +712,15 @@ static func _village(root: Node3D, c: Vector2, rad: float, rng: RandomNumberGene
 	var p1 := rng.randf() * TAU
 	var p2 := rng.randf() * TAU
 	var r_at := func(a: float) -> float: return rad * (1.0 + 0.18 * sin(2.0 * a + p1) + 0.1 * sin(3.0 * a + p2))
-	# the bamboo ring, a clump every ~5 m
-	var n := int(TAU * rad / 5.0)
-	for i in n:
-		var a := (i + rng.randf_range(-0.3, 0.3)) / n * TAU
-		var r: float = r_at.call(a) + rng.randf_range(-1.5, 1.5)
+	# the bamboo ring, a clump every ~4 m, with a staggered inner row
+	var n := int(TAU * rad / 4.0)
+	for i in n * 3 / 2:
+		var a := (i % n + (0.5 if i >= n else 0.0) + rng.randf_range(-0.3, 0.3)) / n * TAU
+		var r: float = r_at.call(a) + rng.randf_range(-1.5, 1.5) - (4.0 if i >= n else 0.0)
 		var s := rng.randf_range(0.8, 1.2)
 		items.append([F.bamboo_mesh(rng.randi() % F.BAMBOO_VARIANTS, 2), Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), Vector3(c.x + cos(a) * r, 0.0, c.y + sin(a) * r))])
 	# fruit trees, areca and coconut palms inside, above the bamboo
-	for i in int(rad * 0.5):
+	for i in int(rad * 0.8):
 		var a := rng.randf() * TAU
 		var r: float = r_at.call(a) * sqrt(rng.randf()) * 0.8
 		var pos := Vector3(c.x + cos(a) * r, 0.0, c.y + sin(a) * r)

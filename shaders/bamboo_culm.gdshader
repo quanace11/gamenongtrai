@@ -18,6 +18,7 @@ uniform float node_dark = 0.45;    // darkening of the node line
 uniform float node_width = 0.014;  // metres
 uniform float streaks = 0.08;
 uniform float bark_noise = 0.0;    // coarse bark mottling (coconut)
+uniform vec2 rough_range = vec2(0.38, 0.75); // young, old culms
 
 void vertex() {
 	vec3 root = MODEL_MATRIX[3].xyz;
@@ -45,7 +46,7 @@ void fragment() {
 	ALBEDO = col * mix(1.0, 0.7, wetness);
 	float ridge = (1.0 - smoothstep(0.0, node_width, dn)) * sign(0.5 - k);
 	NORMAL_MAP = normalize(vec3(0.0, ridge * 0.6, 1.0)) * 0.5 + 0.5;
-	ROUGHNESS = mix(mix(0.38, 0.75, age), 0.2, wetness);
+	ROUGHNESS = mix(mix(rough_range.x, rough_range.y, age), 0.2, wetness);
 	SPECULAR = 0.5;
 	// the base of a clump sits in deep shade
 	AO = mix(0.5, 1.0, smoothstep(0.0, 0.5, COLOR.a));

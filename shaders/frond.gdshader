@@ -23,6 +23,10 @@ void fragment() {
 	if (!FRONT_FACING) {
 		NORMAL = -NORMAL;
 	}
+	// A canopy normal can face away from the camera; the Fresnel term then
+	// turns the leaf into a white mirror of the sky. Tilt it back into view.
+	float nv = dot(NORMAL, VIEW);
+	NORMAL = normalize(NORMAL + VIEW * max(0.3 - nv, 0.0));
 	vec3 c = pow(COLOR.rgb, vec3(2.2));
 	ALBEDO = c * mix(1.0, 0.75, wetness);
 	ROUGHNESS = mix(rough, 0.25, wetness);

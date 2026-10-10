@@ -15,7 +15,7 @@ const SPRAY_TEX = preload("res://assets/textures/veg/bamboo_spray.png")
 const BANANA_TEX = preload("res://assets/textures/veg/banana_leaf.png")
 
 # Bamboo LOD switch distances (m) and the number of cached grove shapes.
-const BAMBOO_LOD := [30.0, 75.0]
+const BAMBOO_LOD := [26.0, 75.0]
 const BAMBOO_VARIANTS := 6
 const PALM_LOD := 45.0
 const LOD_MARGIN := 4.0
@@ -77,7 +77,7 @@ static func tree_material(kind: String) -> ShaderMaterial:
 			p.merge({"plant_height": 9.0, "trunk_sway": 0.12, "branch_sway": 0.15, "translucency": 0.0, "rough": 0.85, "spec": 0.3})
 		"banana_leaf":
 			m.shader = LEAF_CARD
-			p.merge({"leaf_alb": BANANA_TEX, "plant_height": 3.0, "trunk_sway": 0.07, "branch_sway": 0.2, "flutter": 0.04, "translucency": 0.55, "rough": 0.6, "spec": 0.4})
+			p.merge({"leaf_alb": BANANA_TEX, "plant_height": 3.0, "trunk_sway": 0.07, "branch_sway": 0.2, "flutter": 0.04, "translucency": 0.55, "rough": 0.6, "spec": 0.25})
 		"banana_dead":
 			m.shader = LEAF_CARD
 			p.merge({"leaf_alb": BANANA_TEX, "plant_height": 3.0, "trunk_sway": 0.07, "branch_sway": 0.1, "flutter": 0.01, "translucency": 0.2, "rough": 0.8, "spec": 0.3, "dry": 1.0})
@@ -86,15 +86,15 @@ static func tree_material(kind: String) -> ShaderMaterial:
 			p.merge({"plant_height": 3.0, "trunk_sway": 0.07, "branch_sway": 0.2, "translucency": 0.15, "rough": 0.55})
 		"palm_leaf":
 			m.shader = FROND
-			p.merge({"plant_height": 11.0, "trunk_sway": 0.3, "branch_sway": 0.3, "flutter": 0.04, "translucency": 0.5, "rough": 0.5, "spec": 0.5})
+			p.merge({"plant_height": 11.0, "trunk_sway": 0.3, "branch_sway": 0.3, "flutter": 0.04, "translucency": 0.4, "rough": 0.6, "spec": 0.3})
 		"areca_trunk": # grey with pale leaf-scar rings
 			m.shader = CULM
-			p.merge({"plant_height": 11.0, "trunk_sway": 0.3, "internode": 0.16, "young": Color(0.6, 0.6, 0.53), "old": Color(0.55, 0.54, 0.5),
-				"sheath_amount": 0.0, "wax": 0.25, "node_dark": 0.3, "node_width": 0.02, "streaks": 0.05})
+			p.merge({"plant_height": 11.0, "trunk_sway": 0.3, "internode": 0.16, "young": Color(0.5, 0.51, 0.45), "old": Color(0.47, 0.47, 0.43),
+				"sheath_amount": 0.0, "wax": 0.1, "node_dark": 0.3, "node_width": 0.02, "streaks": 0.05, "rough_range": Vector2(0.7, 0.9)})
 		"coconut_trunk": # grey-brown, rough, close leaf scars
 			m.shader = CULM
 			p.merge({"plant_height": 11.0, "trunk_sway": 0.3, "internode": 0.07, "young": Color(0.47, 0.42, 0.36), "old": Color(0.55, 0.52, 0.47),
-				"sheath_amount": 0.0, "wax": 0.0, "node_dark": 0.35, "node_width": 0.025, "streaks": 0.12, "bark_noise": 0.35})
+				"sheath_amount": 0.0, "wax": 0.0, "node_dark": 0.35, "node_width": 0.025, "streaks": 0.12, "bark_noise": 0.35, "rough_range": Vector2(0.85, 0.95)})
 	for k in p:
 		m.set_shader_parameter(k, p[k])
 	_mats[kind] = m
@@ -248,7 +248,7 @@ static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 	var leaves := Buf.new()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = variant * 7919 + 13
-	var culms := rng.randi_range(30, 40)
+	var culms := rng.randi_range(40, 52)
 	var crown := Vector3(0.0, 6.0, 0.0)
 	var segs: int = [14, 8, 5][lod]
 	var sides: int = [7, 5, 4][lod]
@@ -259,16 +259,16 @@ static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 		var az := r.randf() * TAU
 		var out := Vector3(cos(az), 0.0, sin(az))
 		var rf := sqrt(r.randf())
-		var root := out * rf * 1.5
+		var root := out * rf * 1.7
 		var hgt := r.randf_range(9.0, 14.0) * (1.0 - 0.2 * rf * r.randf())
-		var arch := r.randf_range(0.45, 1.05) * (0.55 + 0.6 * rf)
+		var arch := r.randf_range(0.55, 1.25) * (0.5 + 0.75 * rf)
 		var lean := (out + Vector3(r.randf_range(-0.35, 0.35), 0.0, r.randf_range(-0.35, 0.35))).normalized()
 		var pts := []
 		var tng := []
 		var p := root
 		for s in segs + 1:
 			var f := float(s) / segs
-			var th := 0.03 + 0.08 * rf + arch * pow(f, 2.2)
+			var th := 0.04 + 0.14 * rf + arch * pow(f, 2.0)
 			var d := Vector3.UP * cos(th) + lean * sin(th)
 			pts.append(p)
 			tng.append(d)
@@ -277,7 +277,8 @@ static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 		var col := Color(r.randf_range(0.85, 1.08), r.randf() * 0.5, age, 0.0)
 		var ph := r.randf()
 		_tube(wood, pts, r.randf_range(0.035, 0.05), 0.012, sides, col, Vector2(0.0, 1.0), Vector2(0.0, ph), Vector2(0.0, ph))
-		# Branches at the nodes, alternating sides, in the upper 60 %.
+		# Branches at the nodes, alternating sides: short twiggy ones low down
+		# (the thorny tangle of tre gai), long leafy ones in the upper 60 %.
 		var node := r.randf_range(0.3, 0.42)
 		var along := r.randf_range(0.0, node)
 		var bside := 1.0 if r.randf() < 0.5 else -1.0
@@ -286,8 +287,9 @@ static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 			var f := along / hgt
 			if f >= 0.97:
 				break
-			if f < 0.38:
+			if f < 0.15:
 				continue
+			var low := f < 0.38
 			var q := f * segs
 			var i0 := mini(int(q), segs - 1)
 			var bp: Vector3 = (pts[i0] as Vector3).lerp(pts[i0 + 1], q - i0)
@@ -297,29 +299,29 @@ static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 			if radial.length() < 0.05:
 				radial = Vector3.RIGHT
 			radial = radial.normalized().rotated(ct, bside * 1.3 + r.randf_range(-0.5, 0.5))
-			var blen := r.randf_range(0.5, 1.5) * (1.0 - 0.6 * absf(f - 0.65))
+			var blen := r.randf_range(0.25, 0.6) if low else r.randf_range(0.6, 1.6) * (1.0 - 0.6 * absf(f - 0.65))
 			var bdir := (radial * 0.85 + ct * 0.45 + Vector3.DOWN * 0.1).normalized()
 			var bend := Vector3.DOWN * blen * 0.2
 			var u2a := Vector2(bid, ph)
 			if lod == 0:
 				_tube(wood, [bp, bp + bdir * blen * 0.5 + bend * 0.25, bp + bdir * blen + bend], 0.008, 0.003, 3, col, Vector2(f, f), u2a, Vector2(bid + 0.999, ph))
-			var cards := r.randi_range(4, 6)
+			var cards := r.randi_range(2, 3) if low else r.randi_range(5, 8)
 			for j in cards:
 				var g := (j + 1.0) / cards
 				var cdir := (bdir + Vector3(r.randf_range(-0.6, 0.6), r.randf_range(-0.7, 0.1), r.randf_range(-0.6, 0.6))).normalized()
-				var length := r.randf_range(0.45, 0.7)
+				var length := r.randf_range(0.4, 0.6) if low else r.randf_range(0.55, 0.9)
 				var roll := r.randf_range(-0.9, 0.9)
 				var droop := r.randf_range(0.1, 0.45)
 				var tint := Color(1, 1, 1).lerp(Color(0.82, 0.97, 0.7), r.randf())
 				if r.randf() < 0.07:
 					tint = Color(1.0, 0.9, 0.5) # a yellowing spray
-				var keep := lod == 0 or (lod == 1 and (j == cards - 1 or j == (cards - 1) / 2)) or (lod == 2 and j == cards - 1 and bid % 2 == 0)
+				var keep := lod == 0 or (lod == 1 and (j == cards - 1 or j == (cards - 1) / 2)) or (lod == 2 and j == cards - 1)
 				if not keep:
 					continue
-				var grow: float = [1.0, 1.55, 2.4][lod]
+				var grow: float = [1.0, 1.6, 2.5 if not low else 1.6][lod]
 				# Sprays deep inside the clump are darker (light reaches them through the canopy).
 				var cp := bp + bdir * blen * g + bend * g * g
-				tint = tint.darkened(0.25 * (1.0 - clampf(Vector2(cp.x, cp.z).length() / 4.0, 0.0, 1.0)))
+				tint = tint.darkened(0.3 * (1.0 - clampf(Vector2(cp.x, cp.z).length() / 4.5, 0.0, 1.0)) + (0.15 if low else 0.0))
 				tint.a = f
 				_card(leaves, cp, cdir, length * grow, length * grow * 0.5, roll, droop, 2 if lod == 0 else 1, crown, tint, Vector2(bid + 0.999 * g, ph))
 			bid += 1
@@ -338,7 +340,13 @@ static func bamboo(parent: Node3D, pos: Vector3, rng: RandomNumberGenerator, sca
 	for lod in range(2 if far else 0, 3):
 		var mi := _instance(parent, bamboo_mesh(v, lod), pos, yaw, scale)
 		_lod_range(mi, 0.0 if lod == 0 or far else BAMBOO_LOD[lod - 1], BAMBOO_LOD[lod] if lod < 2 else 0.0)
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if lod < 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if lod == 1 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if not far:
+		# The near LOD is 6x heavier; its shadow is drawn by the middle LOD,
+		# which has the same culms and the same leaf coverage.
+		var sh := _instance(parent, bamboo_mesh(v, 1), pos, yaw, scale)
+		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		_lod_range(sh, 0.0, BAMBOO_LOD[0])
 
 
 # ---------------------------------------------------------------- banana
@@ -550,7 +558,7 @@ static func palm_mesh(variant: int, coconut: bool, lod: int) -> ArrayMesh:
 	var up_dir := ((pts[n] as Vector3) - (pts[n - 1] as Vector3)).normalized()
 	var bid := 1
 	var lsegs := 3 if lod == 0 else 1
-	var wide := 1.0 if lod == 0 else 2.0
+	var wide := 1.0 if lod == 0 else 3.0
 	if not coconut:
 		# smooth green crownshaft
 		var cs := [top, top + up_dir * 0.6, top + up_dir * 1.15]
@@ -577,8 +585,8 @@ static func palm_mesh(variant: int, coconut: bool, lod: int) -> ArrayMesh:
 		var elev := lerpf(0.92, -0.05, age) + rng.randf_range(-0.08, 0.08)
 		var dir := (out * sqrt(maxf(1.0 - elev * elev, 0.0)) + Vector3.UP * elev).normalized()
 		var base := top - Vector3.UP * age * (0.4 if coconut else 0.15) + out * 0.05
-		var green := Color(0.36, 0.5, 0.17).lerp(Color(0.46, 0.56, 0.2), rng.randf())
-		var tip := Color(0.55, 0.58, 0.28)
+		var green := Color(0.27, 0.4, 0.12).lerp(Color(0.38, 0.48, 0.15), rng.randf())
+		var tip := Color(0.48, 0.5, 0.22)
 		if coconut and age > 0.75:
 			green = green.lerp(Color(0.62, 0.56, 0.24), (age - 0.75) * 3.0 * rng.randf())
 			tip = Color(0.55, 0.42, 0.22)
@@ -636,7 +644,7 @@ static func village_tree_mesh(variant: int) -> ArrayMesh:
 	var leaves := Buf.new()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = variant * 6007 + 3
-	var hgt := rng.randf_range(6.0, 13.0)
+	var hgt := rng.randf_range(7.0, 16.0)
 	var rad := rng.randf_range(2.2, 4.5) * (0.6 + 0.4 * hgt / 10.0)
 	var squash := rng.randf_range(0.55, 1.1)
 	var bole := rng.randf_range(0.3, 0.5) # crown starts at this fraction of the height
