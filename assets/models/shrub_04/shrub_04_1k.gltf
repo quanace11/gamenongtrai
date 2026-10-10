@@ -80,9 +80,9 @@
       "uri": "textures/shrub_04_nor_gl_1k.jpg"
     },
     {
-      "mimeType": "image/jpeg",
+      "mimeType": "image/png",
       "name": "shrub_04_diff",
-      "uri": "textures/shrub_04_diff_1k.jpg"
+      "uri": "textures/shrub_04_diff_1k.png"
     },
     {
       "mimeType": "image/jpeg",

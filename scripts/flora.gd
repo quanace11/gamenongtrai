@@ -8,6 +8,24 @@ const FOLIAGE = preload("res://shaders/foliage.gdshader")
 
 static var _tex := {}
 static var _mats := {}
+static var _wind: NoiseTexture2D
+
+
+# Seamless gust noise shared by every plant shader (rice, lawn, bamboo):
+# sampled at world xz * 0.035 and scrolled along the wind_dir global, so
+# gust waves cross the lawn, the paddy and the groves together.
+static func wind_noise() -> NoiseTexture2D:
+	if _wind == null:
+		var n := FastNoiseLite.new()
+		n.frequency = 0.012
+		n.fractal_octaves = 3
+		_wind = NoiseTexture2D.new()
+		_wind.width = 256
+		_wind.height = 256
+		_wind.seamless = true
+		_wind.generate_mipmaps = true
+		_wind.noise = n
+	return _wind
 
 
 static func material(kind: String) -> ShaderMaterial:
