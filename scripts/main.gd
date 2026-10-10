@@ -185,7 +185,7 @@ func _setup_environment() -> void:
 	env.tonemap_mode = Environment.TONE_MAPPER_AGX
 	env.tonemap_exposure = 1.3
 	env.tonemap_agx_white = 12.0
-	env.tonemap_agx_contrast = 1.2
+	env.tonemap_agx_contrast = 1.3
 	# 4.6 glow is blended before tonemapping in Screen mode; set every level
 	# so the look does not depend on engine defaults. Wide, faint levels give
 	# the soft bloom of wet air around the sun and bright sky.
@@ -1209,7 +1209,7 @@ func _update_sky() -> float:
 	env.ambient_light_energy = amb * (1.0 + 0.6 * s) + flash * 1.5
 	# Eyes adapt: AgX maps mid grey 1:1 (no ACES bias), so day exposure is
 	# ~1.3; lift it at night so the farm stays playable by moonlight.
-	env.tonemap_exposure = lerpf(2.0, 1.2, smoothstep(0.0, 0.4, daylight)) * lerpf(1.0, 1.15, s)
+	env.tonemap_exposure = lerpf(2.0, 1.1, smoothstep(0.0, 0.4, daylight)) * lerpf(1.0, 1.15, s)
 	# Scotopic vision: colours drain at night.
 	env.adjustment_saturation = lerpf(0.85, 1.15, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
 

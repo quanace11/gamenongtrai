@@ -22,7 +22,7 @@ uniform float flash = 0.0; // lightning
 uniform float drift = 0.0; // tiny cloud wobble, in turns
 uniform float night_gain = 0.06;
 uniform float humid = 0.6; // milky, desaturated tropical haze
-uniform float day_gain = 0.8; // the day HDRIs are bright all round: keep sun/sky contrast
+uniform float day_gain = 0.7; // the day HDRIs are bright all round: keep sun/sky contrast
 uniform float mist_gain = 0.8;
 uniform float glow_gain = 0.8; // warm aureole of a low sun in wet air
 uniform float dusk_gain = 0.32; // the sunset HDRI is exposed for a bright horizon: keep it warm, not white
@@ -34,6 +34,10 @@ uniform vec2 dusk_sun = vec2(0.596, 0.02);
 uniform vec2 storm_sun = vec2(0.582, 0.40);
 uniform float day_warp = 1.0; // 0 = no elevation warp, 1 = HDRI aureole sits on the sun
 uniform vec3 haze_col = vec3(0.86, 0.89, 0.92);
+// Clear-weather blue that deepens with elevation: the day panorama is white
+// over a wide arc beside its sun, which would read as overcast.
+uniform vec3 day_blue = vec3(0.70, 0.88, 1.32); // luminance ~1
+uniform float day_blue_amt = 0.55;
 
 vec3 pano(sampler2D t, vec2 uv, float cap) {
 	return min(texture(t, uv).rgb, vec3(cap));
@@ -80,6 +84,10 @@ void sky() {
 	float low = pow(1.0 - clamp(EYEDIR.y, 0.0, 1.0), 10.0);
 	day = mix(day, haze_col * max(l, 0.85 * day_gain), low * 0.4 * humid);
 
+	// Tint toward blue at the same brightness, so white cloud stays white-ish
+	// but the grey haze arcs turn a pale humid blue.
+	float dl = dot(day, vec3(0.2126, 0.7152, 0.0722));
+	day = mix(day, dl * day_blue, day_blue_amt * smoothstep(0.02, 0.35, EYEDIR.y) * (1.0 - morning));
 	day *= mix(vec3(1.0), vec3(1.1, 0.95, 0.78), gold);
 	vec3 col = mix(night, day, daylight);
 	col = mix(col, sunset * mix(0.4, 1.0, daylight), dusk);
