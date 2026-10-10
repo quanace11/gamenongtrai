@@ -52,8 +52,14 @@ static func in_pen(x: float, z: float) -> bool:
 	return x > DUCK_PEN.x0 and x < DUCK_PEN.x1 and z > DUCK_PEN.z0 and z < DUCK_PEN.z1
 
 
+# The pond shore wobbles around POND.r so it does not read as a pool.
+static func pond_r(x: float, z: float) -> float:
+	var a := atan2(z - POND.z, x - POND.x)
+	return POND.r * (1.0 + 0.09 * sin(a * 2.0 - 1.57) + 0.05 * sin(a * 3.0 - 0.5) + 0.03 * sin(a * 5.0 - 0.3))
+
+
 static func in_pond(x: float, z: float) -> bool:
-	return Vector2(x - POND.x, z - POND.z).length() < POND.r
+	return Vector2(x - POND.x, z - POND.z).length() < pond_r(x, z)
 
 
 static func blocked(x: float, z: float) -> bool:
@@ -63,11 +69,87 @@ static func blocked(x: float, z: float) -> bool:
 	return false
 
 
+# Where the plank bridge crosses the canal on the way to the pond.
+const BRIDGE := {"z": -13.0, "half": 0.45, "y": 0.1}
+const POND_WATER := -0.12
+
+static var _n1: FastNoiseLite
+static var _n2: FastNoiseLite
+
+
+static func _rect_sd(x: float, z: float, x0: float, x1: float, z0: float, z1: float) -> float:
+	var dx := maxf(x0 - x, x - x1)
+	var dz := maxf(z0 - z, z - z1)
+	return Vector2(maxf(dx, 0.0), maxf(dz, 0.0)).length() + minf(maxf(dx, dz), 0.0)
+
+
+# Height of the bare land in metres, outside the paddy floor. The terrain
+# mesh, the ground shader's wet band and ground_y all use it, so the player
+# walks on what is drawn. Gentle swells only rise above y = 0, so plants
+# scattered at y = 0 sink into the grass instead of floating.
+static func terrain_y(x: float, z: float) -> float:
+	if _n1 == null:
+		_n1 = FastNoiseLite.new()
+		_n1.seed = 3
+		_n1.frequency = 0.06
+		_n1.fractal_octaves = 3
+		_n2 = FastNoiseLite.new()
+		_n2.seed = 11
+		_n2.frequency = 0.012
+	var h := (_n1.get_noise_2d(x, z) * 0.5 + 0.5) * 0.05 + (_n2.get_noise_2d(x, z) * 0.5 + 0.5) * 0.14
+	# Yard, house, pens and nursery are levelled and trodden flat.
+	var flat := 1.0 - smoothstep(0.0, 2.0, _rect_sd(x, z, -6.5, 6.5, -30.0, -13.5))
+	flat = maxf(flat, 1.0 - smoothstep(0.0, 1.5, _rect_sd(x, z, -19.5, -6.5, -29.5, -21.5)))
+	flat = maxf(flat, 1.0 - smoothstep(0.0, 1.5, _rect_sd(x, z, DUCK_PEN.x0, DUCK_PEN.x1, DUCK_PEN.z0, DUCK_PEN.z1)))
+	flat = maxf(flat, 1.0 - smoothstep(0.0, 1.5, Vector2(x, z).distance_to(NURSERY) - 2.2))
+	h *= 1.0 - flat
+	# Back to y = 0 at the edge of the near terrain, where the far ground starts.
+	var edge := maxf(absf(x) - 36.0, maxf(-40.0 - z, z - 32.0))
+	h *= 1.0 - smoothstep(0.0, 3.5, edge)
+
+	# Bờ ruộng: steep plastered side toward the paddy, a narrow rounded
+	# crown, a gentler grassy slope outward.
+	var fd := _rect_sd(x, z, FIELD.x0, FIELD.x1, FIELD.z0, FIELD.z1)
+	if fd < 1.2:
+		var top: float = FIELD.bund_top
+		var bund: float
+		if fd < 0.25:
+			bund = lerpf(FIELD.y + 0.13, top, smoothstep(-0.02, 0.25, fd))
+			if fd < 0.0:
+				bund = lerpf(FIELD.y + 0.13, FIELD.y - 0.06, smoothstep(0.0, 0.3, -fd))
+		elif fd < 0.6:
+			var t := (fd - 0.425) / 0.175
+			bund = top + 0.025 * (1.0 - t * t)
+		else:
+			bund = lerpf(top, h, smoothstep(0.6, 1.0, fd))
+		h = bund
+		# Notches in the bund: the sluice from the canal (west) and the drain (east).
+		var gate := (1.0 - smoothstep(0.25, 0.45, absf(z - GATE.y))) * (1.0 - smoothstep(-8.0, -7.9, x)) * smoothstep(-10.7, -10.3, x)
+		var drain := (1.0 - smoothstep(0.25, 0.45, absf(z - DRAIN.y))) * smoothstep(7.9, 8.0, x) * (1.0 - smoothstep(9.3, 9.7, x))
+		h = minf(h, lerpf(h, -0.18, maxf(gate, drain)))
+
+	# Mương: trapezoid channel with a muddy bed.
+	var cd := absf(x - (CANAL.x0 + CANAL.x1) * 0.5)
+	if cd < 1.4:
+		var bed := -0.95 + 0.04 * sin(z * 0.7)
+		h = lerpf(bed, h, smoothstep(0.55, 1.35, cd))
+
+	# Ao: a bowl under the water, a muddy bank sloping up to the grass.
+	var pd := Vector2(x - POND.x, z - POND.z).length()
+	if pd < POND.r * 1.5 + 1.0:
+		var d := pd / pond_r(x, z)
+		var bowl: float
+		if d < 1.0:
+			bowl = POND_WATER - 0.78 * pow(1.0 - d * d, 0.6)
+		else:
+			bowl = lerpf(POND_WATER - 0.02, h, smoothstep(0.0, 1.0, (pd - pond_r(x, z)) / 0.9))
+		h = minf(h, bowl) if d >= 1.0 else bowl
+	return h
+
+
 static func ground_y(x: float, z: float) -> float:
 	if in_field(x, z):
 		return FIELD.y
-	if in_field(x, z, FIELD.bund):
-		return FIELD.bund_top
-	if x > CANAL.x0 and x < CANAL.x1:
-		return -0.75
-	return 0.0
+	if absf(z - BRIDGE.z) < BRIDGE.half and x > CANAL.x0 - 0.9 and x < CANAL.x1 + 0.9:
+		return maxf(BRIDGE.y, terrain_y(x, z))
+	return terrain_y(x, z)
