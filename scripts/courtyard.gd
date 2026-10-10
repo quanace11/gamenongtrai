@@ -3,7 +3,6 @@
 extends Node3D
 
 const L = preload("res://scripts/layout.gd")
-const A = preload("res://scripts/assets.gd")
 const C := 12
 const R := 6
 
@@ -12,8 +11,12 @@ var moist := PackedFloat32Array() # 1 = fresh from threshing, <= 0.14 = dry
 var soaked := PackedFloat32Array() # 0..1 rain damage (germination)
 var total := 0.0
 
-var _mm: MultiMesh
+var _mesh_i: MeshInstance3D
 var _highlight: MeshInstance3D
+var _dirty_t := -1.0
+
+const RES := 4 # heightfield vertices per metre
+const KG_H := 0.012 # metres of grain per kg on a 1 m² cell
 
 
 func _ready() -> void:
@@ -21,28 +24,31 @@ func _ready() -> void:
 	moist.resize(C * R)
 	moist.fill(1.0)
 	soaked.resize(C * R)
-	var b := BoxMesh.new()
-	b.size = Vector3(1.0, 1, 1.0)
-	_mm = MultiMesh.new()
-	_mm.transform_format = MultiMesh.TRANSFORM_3D
-	_mm.use_colors = true
-	_mm.mesh = b
-	_mm.instance_count = C * R
 	var m := StandardMaterial3D.new()
 	m.vertex_color_use_as_albedo = true
 	m.vertex_color_is_srgb = true
-	m.roughness = 0.8
-	# Grain-sized bumps so the heaps read as loose paddy.
+	m.roughness = 0.78
+	# Grain-sized bumps (about 6 mm cells) so the layer reads as loose paddy.
+	var n := FastNoiseLite.new()
+	n.noise_type = FastNoiseLite.TYPE_CELLULAR
+	n.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
+	n.frequency = 0.08
+	var nt := NoiseTexture2D.new()
+	nt.width = 512
+	nt.height = 512
+	nt.seamless = true
+	nt.as_normal_map = true
+	nt.bump_strength = 6.0
+	nt.noise = n
 	m.normal_enabled = true
-	m.normal_texture = A.tex("farm_soil", "nor")
-	m.normal_scale = 0.8
+	m.normal_texture = nt
+	m.normal_scale = 0.9
 	m.uv1_triplanar = true
 	m.uv1_world_triplanar = true
-	m.uv1_scale = Vector3.ONE * 2.5
-	var mmi := MultiMeshInstance3D.new()
-	mmi.multimesh = _mm
-	mmi.material_override = m
-	add_child(mmi)
+	m.uv1_scale = Vector3.ONE * 4.0
+	_mesh_i = MeshInstance3D.new()
+	_mesh_i.material_override = m
+	add_child(_mesh_i)
 	var hp := PlaneMesh.new()
 	hp.size = Vector2(0.98, 0.98)
 	var hm := StandardMaterial3D.new()
@@ -55,6 +61,12 @@ func _ready() -> void:
 	_highlight.visible = false
 	add_child(_highlight)
 	refresh()
+
+
+func _process(_dt: float) -> void:
+	# Drying only changes colours; rebuild at most four times a second.
+	if _dirty_t >= 0.0 and Time.get_ticks_msec() / 1000.0 - _dirty_t > 0.25:
+		refresh()
 
 
 func cell_at(x: float, z: float) -> int:
@@ -151,8 +163,8 @@ func step(dt_min: float, sun: float, raining: bool, tarp_on: bool) -> void:
 			var thin := clampf(3.0 / m, 0.12, 1.0)
 			moist[i] = maxf(0.0, moist[i] - 0.004 * sun * thin * dt_min)
 			changed = true
-	if changed:
-		refresh()
+	if changed and _dirty_t < 0.0:
+		_dirty_t = Time.get_ticks_msec() / 1000.0
 
 
 func dry_fraction() -> float:
@@ -196,18 +208,105 @@ func set_highlight(idx: int) -> void:
 	_highlight.visible = idx >= 0
 	if idx >= 0:
 		var c := center(idx)
-		_highlight.position = Vector3(c.x, 0.03 + mass[idx] * 0.012, c.y)
+		_highlight.position = Vector3(c.x, 0.03 + mass[idx] * KG_H, c.y)
 
 
+# Bilinear sample of a per-cell field at a point in yard metres, cells
+# treated as their centres; blur = 1 also averages the 3x3 neighbourhood.
+func _sample(f: PackedFloat32Array, u: float, v: float) -> float:
+	var x := clampf(u - 0.5, 0.0, C - 1.0)
+	var y := clampf(v - 0.5, 0.0, R - 1.0)
+	var i := mini(int(x), C - 2)
+	var j := mini(int(y), R - 2)
+	var fx := x - i
+	var fy := y - j
+	var a := lerpf(f[j * C + i], f[j * C + i + 1], fx)
+	var b := lerpf(f[(j + 1) * C + i], f[(j + 1) * C + i + 1], fx)
+	return lerpf(a, b, fy)
+
+
+# The spread paddy as one soft heightfield: mounds where it is heaped,
+# a thin raked layer with furrows where it is spread, bare bricks where
+# there is none.
 func refresh() -> void:
-	for i in mass.size():
-		var c := center(i)
-		var h := maxf(mass[i] * 0.012, 0.0001)
-		# Empty cells collapse to nothing so the bricks show through.
-		var w := 1.0 if mass[i] > 0.01 else 0.0
-		_mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3(w, h, w)), Vector3(c.x, 0.015 + h / 2.0, c.y)))
-		var wet := clampf(moist[i] - 0.14, 0.0, 1.0)
-		# Per-cell shade so a spread layer does not read as tiles.
-		var col := Color(0.78, 0.64, 0.36).darkened(0.08 * float((i * 7919) % 5) / 4.0).lerp(Color(0.5, 0.4, 0.2), wet)
-		col = col.lerp(Color(0.45, 0.55, 0.3), soaked[i] * 0.8)
-		_mm.set_instance_color(i, col)
+	_dirty_t = -1.0
+	var nx := C * RES + 1
+	var nz := R * RES + 1
+	# Blur mass a little so cell borders don't show as steps.
+	var bm := PackedFloat32Array()
+	bm.resize(C * R)
+	for j in R:
+		for i in C:
+			var s := 0.0
+			var w := 0.0
+			for dj in range(-1, 2):
+				for di in range(-1, 2):
+					var ii := i + di
+					var jj := j + dj
+					if ii < 0 or jj < 0 or ii >= C or jj >= R:
+						continue
+					var k := 1.0 if (di == 0 and dj == 0) else 0.35
+					s += mass[jj * C + ii] * k
+					w += k
+			bm[j * C + i] = s / w
+	var hs := PackedFloat32Array()
+	hs.resize(nx * nz)
+	var cols := PackedColorArray()
+	cols.resize(nx * nz)
+	var any := false
+	for vj in nz:
+		for vi in nx:
+			var u := float(vi) / RES
+			var v := float(vj) / RES
+			var m := _sample(bm, u, v)
+			# Only where some cell really holds grain.
+			var raw := _sample(mass, u, v)
+			var h := 0.0
+			if raw > 0.05:
+				h = m * KG_H
+				# Rake furrows across the layer, strongest where it is thin.
+				var thin := clampf(1.0 - h / 0.06, 0.0, 1.0)
+				h += (sin(u * 38.0 + sin(v * 3.0) * 0.6) * 0.5 + 0.5) * 0.006 * thin * clampf(h / 0.008, 0.0, 1.0)
+				h += 0.003 * sin(u * 91.0 + v * 57.0) * sin(v * 83.0 - u * 23.0)
+				any = true
+			hs[vj * nx + vi] = h
+			var wet := clampf(_sample(moist, u, v) - 0.14, 0.0, 1.0)
+			var col := Color(0.74, 0.6, 0.34).lerp(Color(0.52, 0.42, 0.24), wet)
+			col = col.lerp(Color(0.45, 0.52, 0.3), _sample(soaked, u, v) * 0.8)
+			col = col.darkened(0.06 * sin(u * 7.3 + v * 5.1) * sin(v * 6.7 - u * 2.9))
+			cols[vj * nx + vi] = col
+	_mesh_i.visible = any
+	if not any:
+		return
+	var verts := PackedVector3Array()
+	verts.resize(nx * nz)
+	var nrm := PackedVector3Array()
+	nrm.resize(nx * nz)
+	var step := 1.0 / RES
+	for vj in nz:
+		for vi in nx:
+			var h := hs[vj * nx + vi]
+			# Edges of the layer dip under the bricks so the rim is hidden.
+			var y := 0.016 + h if h > 0.0015 else 0.004
+			verts[vj * nx + vi] = Vector3(L.COURT.x0 + vi * step, y, L.COURT.z0 + vj * step)
+			var hl := hs[vj * nx + maxi(vi - 1, 0)]
+			var hr := hs[vj * nx + mini(vi + 1, nx - 1)]
+			var hd := hs[maxi(vj - 1, 0) * nx + vi]
+			var hu := hs[mini(vj + 1, nz - 1) * nx + vi]
+			nrm[vj * nx + vi] = Vector3(hl - hr, 2.0 * step, hd - hu).normalized()
+	var idx := PackedInt32Array()
+	for vj in nz - 1:
+		for vi in nx - 1:
+			var a := vj * nx + vi
+			if hs[a] <= 0.0 and hs[a + 1] <= 0.0 and hs[a + nx] <= 0.0 and hs[a + nx + 1] <= 0.0:
+				continue
+			idx.append_array([a, a + 1, a + nx, a + 1, a + nx + 1, a + nx])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = nrm
+	arrays[Mesh.ARRAY_COLOR] = cols
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	_mesh_i.mesh = mesh

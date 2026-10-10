@@ -167,9 +167,9 @@ void fragment() {
 		vec2 a = paths[i].xy;
 		vec2 b = paths[i].zw;
 		vec2 ab = b - a;
-		float t = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
+		float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-4), 0.0, 1.0);
 		float d = length(p - a - ab * t);
-		float w = path_w[i] * 0.5;
+		float w = max(path_w[i] * 0.5, 0.05);
 		path = max(path, 1.0 - smoothstep(w * 0.55, w * 1.25, d + edge_n * w));
 	}
 	float court_d = rect_sd(p, court_rect);

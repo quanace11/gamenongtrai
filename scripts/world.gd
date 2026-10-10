@@ -10,6 +10,11 @@ const A = preload("res://scripts/assets.gd")
 const F = preload("res://scripts/flora.gd")
 const WATER = preload("res://shaders/water.gdshader")
 const GROUND = preload("res://shaders/ground.gdshader")
+const WALL = preload("res://shaders/wall.gdshader")
+const ROOF = preload("res://shaders/roof.gdshader")
+const COURT = preload("res://shaders/court.gdshader")
+const KARST = preload("res://shaders/karst.gdshader")
+const IDLE = preload("res://scripts/idle_anim.gd")
 
 static var _mats := {}
 static var _water_mats := {}
@@ -264,9 +269,14 @@ static func _ground_material(relief: bool) -> ShaderMaterial:
 			var b: Vector2 = path[1][i + 1]
 			segs.append(Vector4(a.x, a.y, b.x, b.y))
 			widths.append(path[0])
-	gm.set_shader_parameter("paths", segs)
+	# Uniform arrays must be passed at their declared length.
+	var count := segs.size()
+	while segs.size() < 16:
+		segs.append(Vector4(0, 0, 1, 0))
+		widths.append(0.0)
+	gm.set_shader_parameter("paths", PackedVector4Array(segs))
 	gm.set_shader_parameter("path_w", PackedFloat32Array(widths))
-	gm.set_shader_parameter("path_count", segs.size())
+	gm.set_shader_parameter("path_count", count)
 	return gm
 
 
@@ -415,24 +425,24 @@ static func _hyacinths(root: Node3D) -> void:
 	var leaves := []
 	var stalks := []
 	var flowers := []
-	var rafts := [Vector2(-1.8, 1.2), Vector2(1.5, -1.6), Vector2(2.2, 1.6), Vector2(-2.4, -1.4)]
+	var rafts := [[Vector2(-1.9, 1.4), 1.1], [Vector2(1.6, -1.8), 0.8], [Vector2(2.4, 1.7), 0.6], [Vector2(-2.6, -1.6), 0.5], [Vector2(0.3, 3.1), 0.7]]
 	for raft in rafts:
-		var count := rng.randi_range(9, 14)
+		var count := int(40 * raft[1] * raft[1]) + 6
 		for i in count:
-			var c: Vector2 = Vector2(L.POND.x, L.POND.z) + raft + Vector2(rng.randfn(0.0, 0.55), rng.randfn(0.0, 0.55))
+			var c: Vector2 = Vector2(L.POND.x, L.POND.z) + raft[0] + Vector2(rng.randfn(0.0, raft[1]), rng.randfn(0.0, raft[1] * 0.8))
 			if not L.in_pond(c.x, c.y) or Vector2(c.x - L.POND.x, c.y - L.POND.z).length() > L.pond_r(c.x, c.y) - 0.35:
 				continue
-			var base := Vector3(c.x, L.POND_WATER + 0.01, c.y)
+			var base := Vector3(c.x, L.POND_WATER - 0.015, c.y)
 			var nl := rng.randi_range(6, 9)
-			var s := rng.randf_range(0.8, 1.25)
+			var s := rng.randf_range(1.1, 1.8)
 			for k in nl:
 				var a := k * TAU / nl + rng.randf_range(-0.25, 0.25)
 				var tilt := rng.randf_range(0.6, 1.0)
 				var b := Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, -tilt * 0.5)
 				stalks.append(Transform3D(b.scaled(Vector3.ONE * s), base))
 				leaves.append(Transform3D((b * Basis(Vector3.RIGHT, tilt * 0.4)).scaled(Vector3.ONE * s), base + b * Vector3(0, 0.09, 0.06) * s))
-			if rng.randf() < 0.3:
-				flowers.append(base)
+			if rng.randf() < 0.12:
+				flowers.append(base + Vector3(0, 0.02, 0))
 	_multi(root, leaf, leaves, _leaf_material(Color(0.13, 0.3, 0.06), 0.35))
 	_multi(root, stalk, stalks, _leaf_material(Color(0.22, 0.36, 0.1), 0.45))
 	# Flower spikes: a stem with small lilac florets.
@@ -522,82 +532,250 @@ static func _hyacinth_stalk() -> ArrayMesh:
 
 
 # ---------------------------------------------------------------- house & courtyard
-static func _house(root: Node3D) -> void:
-	# Sân gạch đỏ
+static func wall_material(tint := Color(1.0, 0.93, 0.78), base_y := 0.3, top_y := 2.9, damp := 1.0) -> ShaderMaterial:
+	var key := "wall|%s|%s|%s|%s" % [tint.to_html(), base_y, top_y, damp]
+	if _mats.has(key):
+		return _mats[key]
+	var m := ShaderMaterial.new()
+	m.shader = WALL
+	m.set_shader_parameter("plaster_alb", A.tex("yellow_plaster", "diff"))
+	m.set_shader_parameter("plaster_nor", A.tex("yellow_plaster", "nor"))
+	m.set_shader_parameter("stain_alb", A.tex("worn_mossy_plasterwall", "diff"))
+	m.set_shader_parameter("tint", tint)
+	m.set_shader_parameter("base_y", base_y)
+	m.set_shader_parameter("top_y", top_y)
+	m.set_shader_parameter("damp", damp)
+	_mats[key] = m
+	return m
+
+
+static func tile_floor_material(rect: Vector4, edge_moss := 1.0) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = COURT
+	m.set_shader_parameter("grain_alb", A.tex("red_brick_pavers", "diff"))
+	m.set_shader_parameter("grain_nor", A.tex("red_brick_pavers", "nor"))
+	m.set_shader_parameter("dirt_alb", A.tex("grass_path_3", "diff"))
+	m.set_shader_parameter("rect", rect)
+	m.set_shader_parameter("edge_moss", edge_moss)
+	return m
+
+
+static func _house(root: Node3D, h: Dictionary) -> void:
+	# Sân gạch: 30 cm fired-clay tiles, aged, with moss creeping in at the edges
 	var court := PlaneMesh.new()
 	court.size = Vector2(L.COURT.x1 - L.COURT.x0, L.COURT.z1 - L.COURT.z0)
 	var cmi := MeshInstance3D.new()
 	cmi.mesh = court
-	cmi.material_override = A.pbr("red_brick_pavers", 2.6)
+	cmi.material_override = tile_floor_material(Vector4(L.COURT.x0, L.COURT.z0, L.COURT.x1, L.COURT.z1))
 	cmi.position = Vector3((L.COURT.x0 + L.COURT.x1) / 2.0, 0.015, (L.COURT.z0 + L.COURT.z1) / 2.0)
 	root.add_child(cmi)
-	# Khung bạt (vạch vôi)
+	# Khung bạt: faint lime lines, only shown while paddy is drying
 	var tw: float = L.TARP.x1 - L.TARP.x0
 	var td: float = L.TARP.z1 - L.TARP.z0
 	var tcx: float = (L.TARP.x0 + L.TARP.x1) / 2.0
 	var tcz: float = (L.TARP.z0 + L.TARP.z1) / 2.0
-	var line_c := Color("e8e2d0")
-	box(root, Vector3(tw, 0.01, 0.05), line_c, Vector3(tcx, 0.025, L.TARP.z0), false)
-	box(root, Vector3(tw, 0.01, 0.05), line_c, Vector3(tcx, 0.025, L.TARP.z1), false)
-	box(root, Vector3(0.05, 0.01, td), line_c, Vector3(L.TARP.x0, 0.025, tcz), false)
-	box(root, Vector3(0.05, 0.01, td), line_c, Vector3(L.TARP.x1, 0.025, tcz), false)
+	var lines := Node3D.new()
+	lines.visible = false
+	root.add_child(lines)
+	var line_m := StandardMaterial3D.new()
+	line_m.albedo_color = Color(0.72, 0.7, 0.64)
+	line_m.roughness = 0.95
+	for k in [[Vector3(tw, 0.004, 0.03), Vector3(tcx, 0.017, L.TARP.z0)], [Vector3(tw, 0.004, 0.03), Vector3(tcx, 0.017, L.TARP.z1)],
+			[Vector3(0.03, 0.004, td), Vector3(L.TARP.x0, 0.017, tcz)], [Vector3(0.03, 0.004, td), Vector3(L.TARP.x1, 0.017, tcz)]]:
+		mbox(lines, k[0], line_m, k[1], Vector3.ZERO, false)
+	h.tarp_lines = lines
 
-	# Nhà ba gian: yellow lime-plaster walls, wooden columns, red tile roof
-	var plaster := A.pbr("yellow_plaster", 2.5, true, Color(1.0, 0.93, 0.78))
-	var wood := A.pbr("weathered_planks", 1.2, true, Color(0.75, 0.55, 0.4))
-	var door := A.pbr("weathered_planks", 0.9, true, Color(0.7, 0.42, 0.28))
-	var plinth := A.pbr("red_brick_pavers", 0.9, true, Color(0.85, 0.8, 0.75))
-	mbox(root, Vector3(10, 2.8, 6), plaster, Vector3(0, 1.5, -25.5))
+	# Nhà ba gian: lime-washed walls on a raised brick platform, a veranda
+	# of wooden columns on stone bases, panelled doors set into the wall.
+	var plaster := wall_material()
+	var wood := A.pbr("weathered_planks", 1.2, true, Color(0.62, 0.46, 0.34))
+	var door := A.pbr("weathered_planks", 0.9, true, Color(0.42, 0.27, 0.18))
+	var plinth := A.pbr("red_brick_pavers", 0.9, true, Color(0.72, 0.66, 0.62))
+	var stone := A.pbr("rock_pitted_mossy", 0.6, true, Color(0.42, 0.44, 0.44))
 	mbox(root, Vector3(10.6, 0.3, 7.8), plinth, Vector3(0, 0.15, -25.0), Vector3.ZERO, false)
+	var floor_tiles := MeshInstance3D.new()
+	var fp := PlaneMesh.new()
+	fp.size = Vector2(10.5, 1.4)
+	floor_tiles.mesh = fp
+	floor_tiles.material_override = tile_floor_material(Vector4(-5.25, -22.5, 5.25, -21.1), 0.0)
+	floor_tiles.position = Vector3(0, 0.302, -21.8)
+	root.add_child(floor_tiles)
+	mbox(root, Vector3(2.6, 0.15, 0.4), plinth, Vector3(0, 0.075, -20.9), Vector3.ZERO, false) # bậc thềm
+	# Body behind the facade; the facade is 12 cm proud of it with door openings.
+	mbox(root, Vector3(10, 2.6, 5.88), plaster, Vector3(0, 1.6, -25.56))
+	var openings := [-3.2, 0.0, 3.2]
+	var ow := 1.5
+	var oh := 2.15
+	var edges := [-5.0]
+	for x in openings:
+		edges.append(x - ow / 2.0)
+		edges.append(x + ow / 2.0)
+	edges.append(5.0)
+	for i in range(0, edges.size(), 2):
+		var x0: float = edges[i]
+		var x1: float = edges[i + 1]
+		mbox(root, Vector3(x1 - x0, 2.6, 0.12), plaster, Vector3((x0 + x1) / 2.0, 1.6, -22.56))
+	for x in openings:
+		mbox(root, Vector3(ow, 2.6 - oh, 0.12), plaster, Vector3(x, 0.3 + oh + (2.6 - oh) / 2.0, -22.56))
+		# Cửa bức bàn: four dark board leaves in a frame, recessed into the wall
+		for k in 4:
+			var lx: float = x - ow / 2.0 + 0.1 + (k + 0.5) * (ow - 0.2) / 4.0
+			mbox(root, Vector3((ow - 0.2) / 4.0 - 0.012, oh - 0.12, 0.05), door, Vector3(lx, 0.3 + (oh - 0.1) / 2.0 + 0.02, -22.6))
+			mbox(root, Vector3((ow - 0.2) / 4.0 - 0.04, 0.05, 0.02), wood, Vector3(lx, 1.15, -22.57))
+		for s in [-1, 1]:
+			mbox(root, Vector3(0.1, oh, 0.12), wood, Vector3(x + s * (ow / 2.0 - 0.05), 0.3 + oh / 2.0, -22.58))
+		mbox(root, Vector3(ow, 0.1, 0.12), wood, Vector3(x, 0.3 + oh - 0.05, -22.58))
+		mbox(root, Vector3(ow, 0.06, 0.16), wood, Vector3(x, 0.33, -22.56)) # ngưỡng cửa
 	for x in [-4.6, -1.6, 1.6, 4.6]:
-		mcyl(root, 0.11, 0.13, 2.7, wood, Vector3(x, 1.65, -21.6))
-		mcyl(root, 0.18, 0.18, 0.12, plinth, Vector3(x, 0.36, -21.6))
-	mbox(root, Vector3(10.2, 0.22, 0.18), wood, Vector3(0, 2.95, -21.6))
-	for x in [-3.2, 0.0, 3.2]:
-		mbox(root, Vector3(1.4, 2.1, 0.08), door, Vector3(x, 1.35, -22.47))
-		mbox(root, Vector3(0.04, 2.1, 0.1), wood, Vector3(x, 1.35, -22.42))
-		mbox(root, Vector3(1.6, 0.12, 0.14), wood, Vector3(x, 2.46, -22.44))
-	# Mái ngói: two tiled slopes, ridge, gable ends
-	var tiles := A.pbr("clay_roof_tiles_02", 1.6)
+		mcyl(root, 0.11, 0.12, 2.75, wood, Vector3(x, 1.72, -21.6), 14)
+		mcyl(root, 0.17, 0.2, 0.14, stone, Vector3(x, 0.37, -21.6), 12) # chân tảng
+	mbox(root, Vector3(10.2, 0.2, 0.16), wood, Vector3(0, 3.0, -21.6)) # xà hiên
+	for x in [-4.6, -1.6, 1.6, 4.6]:
+		mbox(root, Vector3(0.1, 0.12, 1.0), wood, Vector3(x, 2.94, -22.1)) # kẻ hiên into the wall
+
+	# Mái ngói: thick tiled slopes on rafters, a fascia at the eaves,
+	# a plastered ridge with raised ends, plastered gables.
 	var slope := atan2(2.0, 4.2)
-	var half := 4.2 / cos(slope)
+	var length := 4.2 / cos(slope) + 0.4
 	for s in [-1.0, 1.0]:
-		var z: float = -25.25 + s * 2.05
-		mbox(root, Vector3(11.4, 0.14, half + 0.4), tiles, Vector3(0, 3.95, z), Vector3(s * slope, 0, 0))
-	mbox(root, Vector3(11.6, 0.3, 0.36), A.pbr("clay_roof_tiles_02", 0.8, true, Color(0.8, 0.75, 0.7)), Vector3(0, 5.0, -25.25))
+		var pivot := Node3D.new()
+		pivot.position = Vector3(0, 3.95, -25.25 + s * 2.05)
+		pivot.rotation.x = s * slope
+		root.add_child(pivot)
+		var rm := ShaderMaterial.new()
+		rm.shader = ROOF
+		rm.set_shader_parameter("tile_alb", A.tex("clay_roof_tiles_02", "diff"))
+		rm.set_shader_parameter("tile_nor", A.tex("clay_roof_tiles_02", "nor"))
+		rm.set_shader_parameter("tile_arm", A.tex("clay_roof_tiles_02", "arm"))
+		rm.set_shader_parameter("half_len", length / 2.0)
+		rm.set_shader_parameter("eave_sign", s)
+		mbox(pivot, Vector3(11.4, 0.22, length), rm, Vector3.ZERO)
+		var edge_z: float = s * (length / 2.0 - 0.025)
+		mbox(pivot, Vector3(11.4, 0.24, 0.05), wood, Vector3(0, -0.03, edge_z)) # diềm mái
+		# Cầu phong: rafters showing under the overhang
+		var raf := BoxMesh.new()
+		raf.size = Vector3(0.07, 0.09, 2.4)
+		var xf := []
+		var x := -5.5
+		while x <= 5.5:
+			xf.append(Transform3D(Basis(), Vector3(x, -0.155, s * (length / 2.0 - 1.25))))
+			x += 0.6
+		_multi(pivot, raf, xf, wood)
+		var purl := BoxMesh.new()
+		purl.size = Vector3(11.2, 0.08, 0.1)
+		_multi(pivot, purl, [Transform3D(Basis(), Vector3(0, -0.24, s * (length / 2.0 - 0.35))), Transform3D(Basis(), Vector3(0, -0.24, s * (length / 2.0 - 1.2)))], wood)
+	var ridge := wall_material(Color(0.78, 0.76, 0.7), 4.8, 5.4, 0.0)
+	mbox(root, Vector3(11.6, 0.3, 0.42), ridge, Vector3(0, 5.04, -25.25))
 	for x in [-5.75, 5.75]:
-		mbox(root, Vector3(0.3, 0.55, 0.5), plaster, Vector3(x, 5.2, -25.25))
+		var end := mbox(root, Vector3(0.36, 0.5, 0.48), ridge, Vector3(x, 5.2, -25.25))
+		end.rotation.z = signf(x) * -0.25 # đầu kìm, turned up
 	var gable := PrismMesh.new()
 	gable.size = Vector3(6.0, 2.0, 0.2)
 	for x in [-4.95, 4.95]:
 		var g := MeshInstance3D.new()
 		g.mesh = gable
-		g.material_override = plaster
+		g.material_override = wall_material(Color(1.0, 0.93, 0.78), 2.9, 4.9, 0.0)
 		g.position = Vector3(x, 3.9, -25.5)
 		g.rotation.y = PI / 2
 		root.add_child(g)
+	_shadow_decal(root, Vector3(0, 0, -25.0), Vector2(11.8, 9.0), 0.55)
 
-	# Hiên: a water jar, potted plants, the hammock between two columns
+	# Hiên: a water jar, potted plants, the hammock
 	var glaze := StandardMaterial3D.new()
-	glaze.albedo_color = Color(0.28, 0.2, 0.14)
-	glaze.roughness = 0.25
+	glaze.albedo_color = Color(0.2, 0.14, 0.1)
+	glaze.roughness = 0.3
 	var jar := sphere(root, 0.42, Color.WHITE, Vector3(-6.2, 0.45, -22.4), Vector3(1, 1.15, 1))
 	jar.material_override = glaze
 	var lid := mcyl(root, 0.3, 0.32, 0.05, wood, Vector3(-6.2, 0.95, -22.4))
 	lid.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_shadow_decal(root, Vector3(-6.2, 0, -22.4), Vector2(1.4, 1.4), 0.7)
 	for p in [Vector3(-5.4, 0.3, -21.4), Vector3(5.4, 0.3, -21.4), Vector3(-2.6, 0.3, -21.3), Vector3(2.6, 0.3, -21.3)]:
 		place(root, "planter_pot_clay", p, 1.6, randf() * TAU)
 		var pl := place_part(root, "fern_02", p + Vector3(0, 0.3, 0), 0.7, randf() * TAU)
 		pl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		_shadow_decal(root, p, Vector2(0.7, 0.7), 0.6)
+	_hammock(root, wood)
+
+
+# Võng: a faded, striped cloth hammock sagging between two posts.
+static func _hammock(root: Node3D, wood: Material) -> void:
+	var c := Vector3(L.HAMMOCK.x, 0.0, L.HAMMOCK.y)
+	var span := 1.05
+	for s in [-1, 1]:
+		mcyl(root, 0.05, 0.065, 1.7, wood, c + Vector3(s * (span + 0.3), 0.85, 0), 10)
+	var img := Image.create(4, 64, false, Image.FORMAT_RGB8)
+	for y in 64:
+		var col := Color(0.24, 0.32, 0.22)
+		if y % 16 < 2:
+			col = Color(0.62, 0.6, 0.5)
+		elif y % 16 == 8:
+			col = Color(0.45, 0.16, 0.12)
+		for x in 4:
+			img.set_pixel(x, y, col)
 	var cloth := StandardMaterial3D.new()
-	cloth.albedo_color = Color(0.25, 0.42, 0.62)
+	cloth.albedo_texture = ImageTexture.create_from_image(img)
 	cloth.roughness = 0.95
 	cloth.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var ham := sphere(root, 0.4, Color.WHITE, Vector3(L.HAMMOCK.x, 0.72, L.HAMMOCK.y), Vector3(2.3, 0.3, 0.8))
+	cloth.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var nu := 24
+	var nv := 8
+	for i in nu:
+		for j in nv:
+			for q in [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]:
+				var u := float(i + q[0]) / nu
+				var v := float(j + q[1]) / nv
+				var x := (u * 2.0 - 1.0) * span
+				var w := 0.08 + 0.3 * sin(u * PI) # gathered at the ends
+				var z := (v * 2.0 - 1.0) * w
+				var sag := 0.42 * (1.0 - pow(u * 2.0 - 1.0, 2.0))
+				var y := 1.05 - sag + (z * z) * 1.4
+				st.set_uv(Vector2(u, v))
+				st.add_vertex(c + Vector3(x, y, z))
+	st.generate_normals()
+	var ham := MeshInstance3D.new()
+	ham.mesh = st.commit()
 	ham.material_override = cloth
-	ham.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mcyl(root, 0.05, 0.06, 1.3, wood, Vector3(L.HAMMOCK.x - 1.05, 0.65, L.HAMMOCK.y))
-	mcyl(root, 0.05, 0.06, 1.3, wood, Vector3(L.HAMMOCK.x + 1.05, 0.65, L.HAMMOCK.y))
+	root.add_child(ham)
+	var rope := mat(Color(0.45, 0.4, 0.3))
+	for s in [-1, 1]:
+		var a := c + Vector3(s * span, 1.05, 0)
+		var b := c + Vector3(s * (span + 0.3), 1.55, 0)
+		var r := cyl(root, 0.01, 0.01, a.distance_to(b), Color(0.45, 0.4, 0.3), (a + b) / 2.0, 5)
+		r.material_override = rope
+		r.rotation.z = -s * atan2(0.3, 0.5)
+
+
+# Soft dark blob on the ground under an object, standing in for the
+# contact shadow and ambient occlusion the renderer does not give us.
+static var _blob: GradientTexture2D
+
+static func _shadow_decal(root: Node3D, pos: Vector3, size: Vector2, strength := 0.55, yaw := 0.0) -> Decal:
+	if _blob == null:
+		var g := Gradient.new()
+		g.set_color(0, Color(0, 0, 0, 1))
+		g.set_color(1, Color(0, 0, 0, 0))
+		g.add_point(0.45, Color(0, 0, 0, 0.6))
+		_blob = GradientTexture2D.new()
+		_blob.gradient = g
+		_blob.fill = GradientTexture2D.FILL_RADIAL
+		_blob.fill_from = Vector2(0.5, 0.5)
+		_blob.fill_to = Vector2(1.0, 0.5)
+		_blob.width = 128
+		_blob.height = 128
+	var d := Decal.new()
+	d.texture_albedo = _blob
+	d.modulate = Color(0, 0, 0, strength)
+	d.albedo_mix = 1.0
+	d.size = Vector3(size.x, 1.0, size.y)
+	d.upper_fade = 0.3
+	d.lower_fade = 0.3
+	d.position = pos
+	d.rotation.y = yaw
+	d.cull_mask = 1
+	root.add_child(d)
+	return d
 
 
 # ---------------------------------------------------------------- props
@@ -717,7 +895,7 @@ static func _props(root: Node3D, h: Dictionary) -> void:
 		h.duck_eggs.append(e)
 
 	# Chuồng lợn, máng, hầm biogas, bếp củi, thớt
-	var wall := A.pbr("yellow_plaster", 1.5, true, Color(0.78, 0.76, 0.7))
+	var wall := wall_material(Color(0.82, 0.8, 0.74), 0.0, 0.8, 0.8)
 	mbox(root, Vector3(4, 0.8, 0.14), wall, Vector3(L.PIG.x, 0.4, L.PIG.y - 2))
 	mbox(root, Vector3(4, 0.8, 0.14), wall, Vector3(L.PIG.x, 0.4, L.PIG.y + 2))
 	mbox(root, Vector3(0.14, 0.8, 4), wall, Vector3(L.PIG.x - 2, 0.4, L.PIG.y))
@@ -738,8 +916,13 @@ static func _props(root: Node3D, h: Dictionary) -> void:
 	h.pot = place(root, "ceramic_pot", Vector3(L.STOVE.x, 0.3, L.STOVE.y), 1.0)
 	place(root, "tree_stump_01", Vector3(L.BOARD.x, 0.06, L.BOARD.y), 0.42, 0.7)
 	place(root, "hatchet", Vector3(L.BOARD.x + 0.1, 0.3, L.BOARD.y), 1.4, 1.2).rotation.z = PI / 2
-	place(root, "wicker_basket_01", Vector3(L.POND_EDGE.x + 0.5, 0.0, L.POND_EDGE.y + 0.8), 2.0, 0.5)
-	place(root, "wooden_bucket_01", Vector3(-9.4, 0.0, 1.6), 0.9, 0.3)
+	place(root, "wicker_basket_01", Vector3(L.POND_EDGE.x + 0.5, L.ground_y(L.POND_EDGE.x + 0.5, L.POND_EDGE.y + 0.8) - 0.02, L.POND_EDGE.y + 0.8), 2.0, 0.5)
+	place(root, "wooden_bucket_01", Vector3(-9.4, L.ground_y(-9.4, 1.6) - 0.02, 1.6), 0.9, 0.3)
+	# Contact shadows under the props that stand on the ground.
+	for d in [[L.BARREL, 1.6], [Vector2(6.8, -20.6), 1.0], [L.BASKET, 1.1], [L.STOVE, 1.3], [L.BOARD, 0.9],
+			[Vector2(L.BIOGAS.x, L.BIOGAS.y), 3.0], [Vector2(L.POND_EDGE.x + 0.5, L.POND_EDGE.y + 0.8), 0.9], [Vector2(-9.4, 1.6), 0.6]]:
+		var c: Vector2 = d[0]
+		_shadow_decal(root, Vector3(c.x, 0, c.y), Vector2(d[1], d[1]), 0.6)
 
 	h.buffalo = _buffalo(root)
 
@@ -755,85 +938,220 @@ static func _fence(parent: Node3D, a: Vector3, b: Vector3, m: Material) -> void:
 		rail.rotation = Vector3(PI / 2, atan2(d.x, d.z), 0)
 
 
+# Ỉn: a photo-textured pig model (CC-BY 4.0, see assets/CREDITS.md). The
+# model faces +z; the node is turned so the pig faces +x, as before.
 static func _pig(root: Node3D) -> Node3D:
 	var pig := Node3D.new()
 	pig.position = Vector3(L.PIG.x + 0.5, 0.0, L.PIG.y)
 	root.add_child(pig)
-	var skin := StandardMaterial3D.new()
-	skin.albedo_color = Color(0.2, 0.18, 0.18)
-	skin.roughness = 0.75
-	var pink := StandardMaterial3D.new()
-	pink.albedo_color = Color(0.85, 0.6, 0.55)
-	pink.roughness = 0.6
-	var body := CapsuleMesh.new()
-	body.radius = 0.32
-	body.height = 1.15
-	var bm := MeshInstance3D.new()
-	bm.mesh = body
-	bm.material_override = skin
-	bm.position = Vector3(0, 0.5, 0)
-	bm.rotation.z = PI / 2
-	pig.add_child(bm)
-	var belly := sphere(pig, 0.3, Color.WHITE, Vector3(0, 0.36, 0), Vector3(1.6, 0.6, 0.95))
-	belly.material_override = pink
-	var head := sphere(pig, 0.24, Color.WHITE, Vector3(0.62, 0.55, 0), Vector3(1.1, 1, 1))
-	head.material_override = skin
-	var snout := mcyl(pig, 0.1, 0.12, 0.14, pink, Vector3(0.86, 0.5, 0), 12)
-	snout.rotation = Vector3(0, 0, PI / 2)
-	for s in [-1, 1]:
-		var ear := mbox(pig, Vector3(0.12, 0.02, 0.12), skin, Vector3(0.6, 0.72, s * 0.14), Vector3(0.4 * s, 0, -0.5))
-		ear.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	for d in [Vector2(-0.35, -0.16), Vector2(-0.35, 0.16), Vector2(0.35, -0.16), Vector2(0.35, 0.16)]:
-		mcyl(pig, 0.06, 0.05, 0.3, skin, Vector3(d.x, 0.15, d.y), 8)
+	var model := A.model("pig")
+	model.rotation.y = PI / 2
+	model.scale = Vector3.ONE * 1.05
+	pig.add_child(model)
+	_matte(model, 0.78)
+	_shadow_decal(pig, Vector3.ZERO, Vector2(1.9, 0.9), 0.65, PI / 2)
 	return pig
 
 
+# Sketchfab exports set roughness 0 (mirror-like); make their skins matte.
+static func _matte(n: Node, rough: float) -> void:
+	if n is MeshInstance3D:
+		var mi := n as MeshInstance3D
+		for s in mi.mesh.get_surface_count():
+			var m := mi.get_active_material(s)
+			if m is BaseMaterial3D:
+				var d := (m as BaseMaterial3D).duplicate() as BaseMaterial3D
+				d.roughness = rough
+				d.metallic = 0.0
+				d.metallic_specular = 0.35
+				mi.set_surface_override_material(s, d)
+	for c in n.get_children():
+		_matte(c, rough)
+
+
+# Lofted body: ellipse cross-sections [centre, half width (z), half height]
+# along a path, capped at both ends. Colour per vertex from `paint`.
+static func loft(sections: Array, seg: int, paint: Callable, side := Vector3(0, 0, 1)) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := sections.size()
+	var rings := []
+	for i in n:
+		var c: Vector3 = sections[i][0]
+		var prev: Vector3 = sections[maxi(i - 1, 0)][0]
+		var next: Vector3 = sections[mini(i + 1, n - 1)][0]
+		var t := (next - prev).normalized()
+		var up := side.cross(t).normalized()
+		if up.length() < 0.5:
+			up = Vector3.UP
+		var sd := t.cross(up).normalized()
+		var ring := []
+		for k in seg:
+			var a := TAU * k / seg
+			ring.append(c + sd * cos(a) * float(sections[i][1]) + up * sin(a) * float(sections[i][2]))
+		rings.append(ring)
+	var idx := 0
+	var verts := []
+	for i in n:
+		for k in seg:
+			verts.append(rings[i][k])
+	for p in verts:
+		st.set_color(paint.call(p))
+		st.add_vertex(p)
+	for i in n - 1:
+		for k in seg:
+			var a := i * seg + k
+			var b := i * seg + (k + 1) % seg
+			var c := (i + 1) * seg + k
+			var d := (i + 1) * seg + (k + 1) % seg
+			# Godot's front faces wind clockwise seen from outside.
+			for q in [a, b, c, b, d, c]:
+				st.add_index(q)
+	# End caps: a centre point per end.
+	for e: int in [0, n - 1]:
+		var cp: Vector3 = sections[e][0]
+		st.set_color(paint.call(cp))
+		st.add_vertex(cp)
+		var ci := verts.size() + (0 if e == 0 else 1)
+		for k in seg:
+			var a := e * seg + k
+			var b := e * seg + (k + 1) % seg
+			if e == 0:
+				for q in [ci, b, a]:
+					st.add_index(q)
+			else:
+				for q in [ci, a, b]:
+					st.add_index(q)
+	st.generate_normals()
+	return st.commit()
+
+
+static func _skin(rough: float, wrinkle := 0.35) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	m.roughness = rough
+	m.normal_enabled = true
+	m.normal_texture = A.tex("brown_mud_03", "nor")
+	m.normal_scale = wrinkle
+	m.uv1_triplanar = true
+	m.uv1_scale = Vector3.ONE * 2.0
+	return m
+
+
+# Trâu: a Vietnamese swamp buffalo. Slate-grey barrel body with a shoulder
+# hump, head carried low, pale chevron on the throat, lighter legs caked
+# with paddy mud, and dark crescent horns swept back.
 static func _buffalo(root: Node3D) -> Node3D:
 	var buff := Node3D.new()
-	buff.position = Vector3(L.BUFFALO.x, 0, L.BUFFALO.y)
+	buff.position = Vector3(L.BUFFALO.x, L.ground_y(L.BUFFALO.x, L.BUFFALO.y) - 0.02, L.BUFFALO.y)
 	buff.rotation.y = 0.3
 	root.add_child(buff)
-	var hide := StandardMaterial3D.new()
-	hide.albedo_color = Color(0.2, 0.19, 0.19)
-	hide.roughness = 0.7
-	hide.normal_enabled = true
-	hide.normal_texture = A.tex("brown_mud_03", "nor")
-	hide.normal_scale = 0.4
+	var hide := Color(0.3, 0.29, 0.29)
+	var pale := Color(0.45, 0.43, 0.41)
+	var mud := Color(0.33, 0.26, 0.19)
+	var noise := FastNoiseLite.new()
+	noise.frequency = 6.0
+	var paint := func(p: Vector3) -> Color:
+		var c := hide.lerp(pale, smoothstep(0.62, 0.42, p.y) * 0.6)
+		# Pale chevron across the throat.
+		if p.x > 0.95 and p.y < 0.86 and absf(p.y - (0.9 - (p.x - 0.95) * 0.5)) < 0.05:
+			c = Color(0.62, 0.58, 0.55)
+		var m := smoothstep(0.5, 0.35, p.y + noise.get_noise_3d(p.x, p.y, p.z) * 0.08)
+		c = c.lerp(mud, m * 0.9)
+		return c.darkened(noise.get_noise_3d(p.x * 0.3, p.y * 0.3, p.z * 0.3) * 0.08)
+	var skin := _skin(0.72)
+	var body := MeshInstance3D.new()
+	body.mesh = loft([
+		[Vector3(-1.27, 1.0, 0), 0.1, 0.14],
+		[Vector3(-1.2, 0.98, 0), 0.3, 0.33],
+		[Vector3(-1.0, 0.95, 0), 0.42, 0.43],
+		[Vector3(-0.62, 0.92, 0), 0.46, 0.47],
+		[Vector3(-0.2, 0.9, 0), 0.5, 0.52],
+		[Vector3(0.2, 0.93, 0), 0.49, 0.53],
+		[Vector3(0.55, 0.98, 0), 0.44, 0.52],
+		[Vector3(0.82, 0.97, 0), 0.36, 0.44],
+		[Vector3(1.02, 0.93, 0), 0.29, 0.36],
+		[Vector3(1.22, 0.87, 0), 0.24, 0.28],
+		[Vector3(1.36, 0.84, 0), 0.2, 0.22],
+	], 20, paint)
+	body.material_override = skin
+	buff.add_child(body)
+	# Legs: thigh, knee or hock, cannon bone, fetlock, hoof.
+	for leg in [[0.55, 0.0, 1.0], [-0.88, -0.12, 1.15]]:
+		for s in [-1.0, 1.0]:
+			var x: float = leg[0]
+			var b: float = leg[1]
+			var w: float = leg[2]
+			var lm := MeshInstance3D.new()
+			lm.mesh = loft([
+				[Vector3(x, 0.85, s * 0.27), 0.15 * w, 0.17 * w],
+				[Vector3(x + b * 0.4, 0.58, s * 0.26), 0.11 * w, 0.12 * w],
+				[Vector3(x + b, 0.42, s * 0.25), 0.075, 0.085],
+				[Vector3(x + b * 0.6, 0.2, s * 0.25), 0.06, 0.065],
+				[Vector3(x + b * 0.55, 0.09, s * 0.25), 0.068, 0.07],
+				[Vector3(x + b * 0.5 + 0.02, 0.0, s * 0.25), 0.075, 0.07],
+			], 10, paint, Vector3(1, 0, 0))
+			lm.material_override = skin
+			buff.add_child(lm)
+	# Head on its own pivot so it can nod while grazing.
+	var head := Node3D.new()
+	head.position = Vector3(1.3, 0.88, 0)
+	buff.add_child(head)
+	var hm := MeshInstance3D.new()
+	hm.mesh = loft([
+		[Vector3(0.0, 0.0, 0), 0.17, 0.2],
+		[Vector3(0.12, -0.02, 0), 0.19, 0.21],
+		[Vector3(0.27, -0.08, 0), 0.16, 0.17],
+		[Vector3(0.43, -0.17, 0), 0.12, 0.13],
+		[Vector3(0.57, -0.25, 0), 0.115, 0.105],
+		[Vector3(0.66, -0.29, 0), 0.105, 0.085],
+	], 16, func(p: Vector3) -> Color:
+		var c: Color = paint.call(p + Vector3(1.3, 0.88, 0))
+		return c.lerp(Color(0.1, 0.095, 0.09), smoothstep(0.5, 0.62, p.x))) # dark wet muzzle
+	hm.material_override = skin
+	head.add_child(hm)
 	var horn_m := StandardMaterial3D.new()
-	horn_m.albedo_color = Color(0.75, 0.72, 0.62)
-	horn_m.roughness = 0.4
-	var body := CapsuleMesh.new()
-	body.radius = 0.5
-	body.height = 2.1
-	var bm := MeshInstance3D.new()
-	bm.mesh = body
-	bm.material_override = hide
-	bm.position = Vector3(0, 1.05, 0)
-	bm.rotation.z = PI / 2
-	buff.add_child(bm)
-	sphere(buff, 0.45, Color.WHITE, Vector3(0.55, 1.15, 0), Vector3(1.1, 1.15, 1.0)).material_override = hide
-	var neck := mcyl(buff, 0.26, 0.36, 0.6, hide, Vector3(1.05, 1.15, 0), 12)
-	neck.rotation.z = -1.0
-	var head := sphere(buff, 0.26, Color.WHITE, Vector3(1.4, 1.0, 0), Vector3(1.4, 1.0, 0.9))
-	head.material_override = hide
-	var muzzle := sphere(buff, 0.15, Color.WHITE, Vector3(1.68, 0.92, 0), Vector3(1, 0.9, 1.1))
-	muzzle.material_override = mat(Color(0.12, 0.11, 0.11))
-	for s in [-1, 1]:
-		var horn := TorusMesh.new()
-		horn.inner_radius = 0.24
-		horn.outer_radius = 0.3
-		horn.rings = 24
-		var hm := MeshInstance3D.new()
-		hm.mesh = horn
-		hm.material_override = horn_m
-		hm.position = Vector3(1.32, 1.3, s * 0.22)
-		hm.rotation = Vector3(PI / 2, 0, s * 0.3)
-		hm.scale = Vector3(1, 1, 0.45)
-		buff.add_child(hm)
-	for d in [Vector2(-0.7, -0.28), Vector2(-0.7, 0.28), Vector2(0.65, -0.28), Vector2(0.65, 0.28)]:
-		mcyl(buff, 0.1, 0.08, 0.7, hide, Vector3(d.x, 0.35, d.y), 10)
-	var tail := mcyl(buff, 0.03, 0.02, 0.8, hide, Vector3(-1.08, 0.85, 0), 6)
-	tail.rotation.z = -0.2
+	horn_m.albedo_color = Color(0.2, 0.18, 0.16)
+	horn_m.roughness = 0.45
+	horn_m.normal_enabled = true
+	horn_m.normal_texture = A.tex("weathered_planks", "nor")
+	horn_m.normal_scale = 0.6
+	horn_m.uv1_triplanar = true
+	horn_m.uv1_scale = Vector3(6, 6, 6)
+	var eye_m := mat(Color(0.03, 0.025, 0.02))
+	for s in [-1.0, 1.0]:
+		# Crescent horn: out, back and a little up, tapering to a point.
+		var secs := []
+		for k in 11:
+			var t := k / 10.0
+			var th := t * 2.5
+			var r := 0.4
+			var p := Vector3(0.12 + r * (cos(th) - 1.0) * 0.85, 0.15 + 0.1 * t + 0.08 * sin(th), s * (0.13 + r * sin(th)))
+			secs.append([p, lerpf(0.065, 0.012, t), lerpf(0.05, 0.012, t)])
+		var hn := MeshInstance3D.new()
+		hn.mesh = loft(secs, 10, func(_p: Vector3) -> Color: return Color.WHITE, Vector3.UP)
+		hn.material_override = horn_m
+		head.add_child(hn)
+		var ear := sphere(head, 0.1, Color.WHITE, Vector3(0.04, 0.05, s * 0.25), Vector3(0.45, 0.25, 1.0))
+		ear.rotation = Vector3(s * 0.35, 0, 0)
+		ear.material_override = skin
+		sphere(head, 0.025, Color.WHITE, Vector3(0.22, 0.02, s * 0.15)).material_override = eye_m
+	var tail := MeshInstance3D.new()
+	tail.mesh = loft([
+		[Vector3(-1.25, 1.08, 0), 0.04, 0.04],
+		[Vector3(-1.33, 0.9, 0), 0.025, 0.025],
+		[Vector3(-1.36, 0.6, 0), 0.02, 0.02],
+		[Vector3(-1.36, 0.45, 0), 0.045, 0.035],
+		[Vector3(-1.36, 0.36, 0), 0.01, 0.01],
+	], 8, func(p: Vector3) -> Color: return Color(0.12, 0.11, 0.1) if p.y < 0.5 else hide, Vector3(1, 0, 0))
+	tail.material_override = skin
+	buff.add_child(tail)
+	var idle := IDLE.new()
+	idle.head = head
+	idle.tail = tail
+	buff.add_child(idle)
+	_shadow_decal(buff, Vector3(0, 0, 0), Vector2(3.2, 1.5), 0.7)
 	return buff
 
 
@@ -932,71 +1250,96 @@ static func _clear_for_grass(x: float, z: float) -> bool:
 	return true
 
 
-# Karst towers (núi đá vôi) on the horizon, like Ninh Bình.
+# Karst towers (núi đá vôi) on the horizon, like Ninh Bình: steep fluted
+# limestone with jungle on the ledges and crowns, in clusters at 180-320 m
+# and a taller, hazier ring at 380-550 m so the silhouettes layer.
 static func _hills(root: Node3D) -> void:
+	var t0 := Time.get_ticks_msec()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 77
 	var noise := FastNoiseLite.new()
-	noise.frequency = 0.08
-	var m := StandardMaterial3D.new()
-	m.vertex_color_use_as_albedo = true
-	m.vertex_color_is_srgb = true
-	m.roughness = 0.95
-	m.normal_enabled = true
-	m.normal_texture = A.tex("dirt", "nor")
-	m.uv1_triplanar = true
-	m.uv1_world_triplanar = true
-	m.uv1_scale = Vector3.ONE / 12.0
-	for i in 22:
-		var a := i / 22.0 * TAU + rng.randf_range(-0.12, 0.12)
-		var r := rng.randf_range(110, 170)
-		var hgt := rng.randf_range(22, 48)
-		var rad := rng.randf_range(13, 24)
-		var sm := SphereMesh.new()
-		sm.radius = 1.0
-		sm.height = 2.0
-		sm.radial_segments = 24
-		sm.rings = 16
-		var arr := sm.get_mesh_arrays()
-		var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-		var cols := PackedColorArray()
-		cols.resize(verts.size())
-		var center := Vector3(cos(a) * r, 0, sin(a) * r)
-		for k in verts.size():
-			var v := verts[k]
-			var y := maxf(v.y, -0.2)
-			# Near-vertical cliffs with a rounded crown, broken up by noise so
-			# each tower has ledges, bulges and a lumpy top.
-			var w := sqrt(1.0 - pow(clampf(y, 0.0, 1.0), 2.0)) if y > 0.0 else 1.0
-			var n := noise.get_noise_3d(v.x * 4 + i * 13, y * 5, v.z * 4) * 0.45
-			n += noise.get_noise_3d(v.x * 11 + i * 7, y * 13, v.z * 11) * 0.18
-			var p := Vector3(v.x * rad * w * (1.0 + n), (y + 0.2) * hgt * (1.0 + n * 0.25), v.z * rad * w * (1.0 + n))
-			verts[k] = p
-			# Green scrub on ledges and the crown, grey limestone on steep faces.
-			var steep := clampf(1.0 - absf(v.y) * 1.4, 0.0, 1.0)
-			var rock := clampf(noise.get_noise_3d(v.x * 9, y * 18 + i, v.z * 9) * 1.8 + steep * 0.6 - 0.1, 0.0, 1.0)
-			cols[k] = Color(0.2, 0.3, 0.13).lerp(Color(0.48, 0.48, 0.44), rock * 0.85)
-		arr[Mesh.ARRAY_VERTEX] = verts
-		arr[Mesh.ARRAY_COLOR] = cols
-		arr[Mesh.ARRAY_NORMAL] = null
-		arr[Mesh.ARRAY_TANGENT] = null
-		var st := SurfaceTool.new()
-		st.create_from_arrays(arr)
-		st.generate_normals()
-		st.generate_tangents()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	noise.fractal_octaves = 5
+	noise.frequency = 0.9
+	var m := ShaderMaterial.new()
+	m.shader = KARST
+	m.set_shader_parameter("rock_alb", A.tex("rock_pitted_mossy", "diff"))
+	m.set_shader_parameter("rock_nor", A.tex("rock_pitted_mossy", "nor"))
+	var towers := []
+	# [angle, radius] of each cluster; angle 0 = east, PI/2 = south.
+	for c in [[1.62, 235.0], [3.55, 265.0], [5.15, 215.0], [0.55, 300.0]]:
+		var n := rng.randi_range(5, 8)
+		for k in n:
+			var a: float = c[0] + rng.randf_range(-0.2, 0.2)
+			var r: float = c[1] + rng.randf_range(-45.0, 45.0)
+			var hgt := rng.randf_range(50.0, 105.0)
+			towers.append([a, r, hgt, hgt * rng.randf_range(0.32, 0.5), 56, 40])
+	for k in 24:
+		var a := k / 24.0 * TAU + rng.randf_range(-0.1, 0.1)
+		towers.append([a, rng.randf_range(380.0, 550.0), rng.randf_range(90.0, 170.0), rng.randf_range(35.0, 65.0), 32, 24])
+	for i in towers.size():
+		var t: Array = towers[i]
 		var mi := MeshInstance3D.new()
-		mi.mesh = st.commit()
+		mi.mesh = _tower(noise, i, t[3], t[2], t[4], t[5], rng)
 		mi.material_override = m
-		mi.position = center + Vector3(0, -4, 0)
+		mi.position = Vector3(cos(t[0]) * t[1], -3.0, sin(t[0]) * t[1])
 		mi.rotation.y = rng.randf() * TAU
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		root.add_child(mi)
+	print("karst built in %d ms" % (Time.get_ticks_msec() - t0))
+
+
+static func _tower(noise: FastNoiseLite, i: int, rad: float, hgt: float, segs: int, rings: int, rng: RandomNumberGenerator) -> ArrayMesh:
+	var sm := SphereMesh.new()
+	sm.radius = 1.0
+	sm.height = 2.0
+	sm.radial_segments = segs
+	sm.rings = rings
+	var arr := sm.get_mesh_arrays()
+	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	var lean := Vector2(rng.randf_range(-0.15, 0.15), rng.randf_range(-0.15, 0.15))
+	var crown := rng.randf_range(4.0, 8.0) # higher = flatter, squarer top
+	for k in verts.size():
+		var v := verts[k]
+		var y := maxf(v.y, -0.25)
+		# Near-vertical walls, a rounded crown and a talus flare at the foot.
+		var w := sqrt(maxf(0.0, 1.0 - pow(clampf(y, 0.0, 1.0), crown))) if y > 0.0 else 1.0
+		w *= 1.0 + 0.35 * (1.0 - smoothstep(-0.25, 0.12, y))
+		# Vertical fluting and horizontal ledges from ridged noise, lumps on the crown.
+		var n := noise.get_noise_3d(v.x * 1.5 + i * 13.0, y * 0.5, v.z * 1.5) * 0.3
+		n += noise.get_noise_3d(v.x * 6.0 + i * 7.0, y * 4.0, v.z * 6.0) * 0.1
+		var lump := noise.get_noise_3d(v.x * 0.8 + i * 3.0, 9.0, v.z * 0.8) * 0.25
+		var yy := (y + 0.25) * hgt * (1.0 + lump * smoothstep(0.3, 1.0, y) + n * 0.15)
+		verts[k] = Vector3(v.x * rad * w * (1.0 + n) + lean.x * yy, yy, v.z * rad * w * (1.0 + n) + lean.y * yy)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = null
+	arr[Mesh.ARRAY_TANGENT] = null
+	arr[Mesh.ARRAY_TEX_UV] = null
+	var st := SurfaceTool.new()
+	st.create_from_arrays(arr)
+	st.generate_normals()
+	arr = st.commit_to_arrays()
+	verts = arr[Mesh.ARRAY_VERTEX]
+	var nrm: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+	var cols := PackedColorArray()
+	cols.resize(verts.size())
+	for k in verts.size():
+		# Jungle on anything flat enough to hold soil, and on the scree at the foot.
+		var g := smoothstep(0.3, 0.65, nrm[k].y)
+		g = maxf(g, 1.0 - smoothstep(0.06, 0.18, verts[k].y / hgt))
+		g = maxf(g, smoothstep(0.55, 0.9, noise.get_noise_3d(verts[k].x * 0.05, verts[k].y * 0.08, verts[k].z * 0.05) * 0.5 + 0.5) * 0.7)
+		cols[k] = Color(g, 0, 0)
+	arr[Mesh.ARRAY_COLOR] = cols
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return mesh
 
 
 static func build(root: Node3D) -> Dictionary:
 	var h := {}
 	_ground(root, h)
-	_house(root)
+	_house(root, h)
 	_props(root, h)
 	_plants(root)
 	_hills(root)

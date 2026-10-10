@@ -3,13 +3,13 @@
 importer="scene"
 importer_version=1
 type="PackedScene"
-uid="uid://ksvtnqtaub3w"
-path="res://.godot/imported/pig.gltf-3f6ec4832ba3c9760ab5b75885cdc5c7.scn"
+uid="uid://ccplo0trl1nbq"
+path="res://.godot/imported/pig_1k.gltf-c680af96f2bc7adac0665282f1463fa5.scn"
 
 [deps]
 
-source_file="res://assets/models/pig/pig.gltf"
-dest_files=["res://.godot/imported/pig.gltf-3f6ec4832ba3c9760ab5b75885cdc5c7.scn"]
+source_file="res://assets/models/pig/pig_1k.gltf"
+dest_files=["res://.godot/imported/pig_1k.gltf-c680af96f2bc7adac0665282f1463fa5.scn"]
 
 [params]
 
