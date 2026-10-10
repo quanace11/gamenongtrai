@@ -15,7 +15,10 @@ const PANICLE = preload("res://shaders/rice_panicle.gdshader")
 const CHUNK := 2.0
 const NC := 8 # chunks per side
 const VARIANTS := [2, 2, 1] # meshes per level of detail
-const BASE_RANGES := [4.5, 12.0] # lod 0 ends, lod 1 ends (metres)
+# lod 0 ends, lod 1 ends (metres). Kept short: with 3 x 3 hills per clump
+# a ripe paddy holds ~5,600 hills, and every lod-0 hill (~2.2 k triangles)
+# is drawn in the depth prepass, the colour pass and the shadow cascades.
+const BASE_RANGES := [3.2, 9.0]
 
 var sub := 3
 var ranges: Array = BASE_RANGES.duplicate()

@@ -194,7 +194,7 @@ static func hill(s: float, seed: int, lod := 0) -> ArrayMesh:
 	var young := 1.0 - smoothstep(0.0, 0.2, s) # transplant seedlings
 	var tiller_n := int(round(lerpf(3.0, 15.0, smoothstep(0.02, 0.45, s))))
 	if lod == 1:
-		tiller_n = maxi(3, int(round(tiller_n * 0.65)))
+		tiller_n = maxi(3, int(round(tiller_n * 0.55)))
 	elif lod == 2:
 		tiller_n = maxi(2, int(round(tiller_n * 0.4)))
 	var collar := 0.045 + 0.59 * pow(smoothstep(0.0, 0.68, s), 2.2) # flag-leaf collar height
@@ -203,7 +203,7 @@ static func hill(s: float, seed: int, lod := 0) -> ArrayMesh:
 	var leaf_len := lerpf(0.19, 0.42, smoothstep(0.0, 0.48, s))
 	# half width: 5 mm seedling leaves to 10-11 mm; the far lods widen to keep cover
 	var leaf_w: float = lerpf(0.0026, 0.0052, smoothstep(0.0, 0.42, s)) * [1.0, 1.35, 2.0][lod]
-	var segs: int = [6, 3, 2][lod]
+	var segs: int = [5, 3, 2][lod]
 	var across: int = [3, 2, 2][lod]
 	var nleaf: int = [4, 3, 2][lod]
 	if young > 0.5:

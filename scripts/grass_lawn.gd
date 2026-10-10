@@ -1,6 +1,6 @@
 # The village lawn: short grass blades that follow the camera (see
 # shaders/grass_lawn.gdshader). Two MultiMeshes of single blades:
-#   near: a 24 m wrap patch of 4-blade tufts 16 cm apart on High (~155
+#   near: a 24 m wrap patch of 4-blade tufts 14 cm apart on High (~215
 #         blades per m²), 3 segments, fading out at 8.5-11.5 m;
 #   far:  a 48 m patch of wider 2-segment tufts that grows in where the
 #         near patch fades and fades out by 23 m.
@@ -16,7 +16,7 @@ const SHADER = preload("res://shaders/grass_lawn.gdshader")
 const MAP_RECT := Rect2(-40.0, -44.0, 80.0, 80.0)
 const RES := 256
 # [near grid, far grid] per quality level 0..2
-const GRIDS := [[104, 72], [128, 88], [150, 104]]
+const GRIDS := [[120, 72], [148, 88], [176, 104]]
 
 var shade_spots: Array = [] # [Vector3(x, z, radius)] under groves: thinner, drier grass
 var _near: MultiMeshInstance3D

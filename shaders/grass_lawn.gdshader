@@ -121,7 +121,7 @@ void vertex() {
 		// Colour: patches of lush, fresh and dry grass; dark, earthy roots.
 		float patchy = textureLod(noise, root * 0.011 + vec2(0.31, 0.77), 0.0).r;
 		vec3 c = mix(lush, fresh, smoothstep(0.3, 0.75, patchy));
-		c = mix(c, dry, clamp(m.g + (r3 - 0.5) * 0.35 + m.a * 0.3, 0.0, 1.0));
+		c = mix(c, dry, clamp(m.g * 0.75 + (r3 - 0.5) * 0.3 + m.a * 0.3 - 0.05, 0.0, 1.0));
 		c *= 0.8 + 0.22 * r2 + 0.16 * r4;
 		v_col = mix(mix(soil, c, 0.65) * 0.85, c, smoothstep(0.0, 0.45, t));
 		v_t = t;

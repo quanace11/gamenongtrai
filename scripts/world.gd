@@ -687,8 +687,8 @@ static func _plants(root: Node3D) -> void:
 	A.scatter(root, "nettle_plant", weeds.slice(0, weeds.size() / 2), true, 30.0)
 	A.scatter(root, "shrub_04", shrubs, true, 40.0)
 	A.scatter(root, "fern_02", shrubs, true, 40.0)
-	A.scatter(root, "rock_07", rocks, true, 45.0, 0.4, A.recolor("rock_07", 0.25, Color(0.84, 0.87, 0.9), 0.95))
-	A.scatter(root, "stone_01", pebbles, false, 25.0, 0.35, A.recolor("stone_01", 0.2, Color(0.8, 0.82, 0.84), 0.9))
+	A.scatter(root, "rock_07", rocks, true, 45.0, 0.4, A.recolor("rock_07", 0.25, Color(0.9, 0.92, 0.94), 1.2))
+	A.scatter(root, "stone_01", pebbles, false, 25.0, 0.35, A.recolor("stone_01", 0.2, Color(0.86, 0.87, 0.88), 1.1))
 
 
 static func _clear_for_grass(x: float, z: float) -> bool:

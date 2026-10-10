@@ -97,9 +97,21 @@ func _go() -> void:
 					# nursery bed at day state
 					m.nursery.state = "ready"
 					m._refresh_nursery()
+					var sd: MultiMeshInstance3D = m.world.seedlings
+					print("SEED ", sd.multimesh.visible_instance_count, " ", sd.global_transform, " ", sd.multimesh.get_aabb(), " ", sd.get_aabb())
 					await m._look_at(13, -12.3, 13, -16, -0.45)
 					await m._set_time(10.0)
 					await m._shot("nursery")
+				elif id.begins_with("k"):
+					await m._look_at(-15.0, -8.0, -19.0, -12.5, -0.5)
+					await m._set_time(10.0)
+					await m._shot("rocks")
+				elif id.begins_with("e"):
+					# eye-level rice close-up from the bund
+					_plant(int(id.substr(1)))
+					await m._look_at(-8.3, 2.0, -4.0, 1.0, -0.2)
+					await m._set_time(9.5 if id != "e8" else 16.6)
+					await m._shot("rice-eye-" + id.substr(1))
 				elif id.begins_with("b"):
 					await m._look_at(18, -18, 24, -26, 0.12)
 					await m._set_time(10.0)
