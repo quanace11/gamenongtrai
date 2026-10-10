@@ -121,8 +121,11 @@ static func water_material(kind: String) -> ShaderMaterial:
 			m.set_shader_parameter("clarity", 0.35)
 			m.set_shader_parameter("scale", 0.5)
 		"canal":
-			m.set_shader_parameter("tint", Color(0.22, 0.28, 0.2))
-			m.set_shader_parameter("clarity", 0.82)
+			# Turbid water reflects little light back up (albedo ~0.1), and is
+			# clear enough that the bank slope shows under the edges.
+			m.set_shader_parameter("tint", Color(0.12, 0.15, 0.09))
+			m.set_shader_parameter("clarity", 0.5)
+			m.set_shader_parameter("shore", 0.12)
 		"pond":
 			m.set_shader_parameter("tint", Color(0.16, 0.25, 0.18))
 			m.set_shader_parameter("clarity", 0.88)
