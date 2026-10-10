@@ -32,3 +32,29 @@ for m in mods:
   dl(g['url'], f'{root}/models/{m}/{m}_1k.gltf')
   for rel,v in g['include'].items(): dl(v['url'], f'{root}/models/{m}/{rel}')
   print('model',m,flush=True)
+
+# ---- VEG package: cut-out leaves for the Poly Haven plants --------------
+# Their glTFs say alphaMode MASK but ship a 3-channel JPEG diffuse, so the
+# leaf cards render as opaque quads. Merge the separate alpha map into an
+# RGBA PNG diffuse (512 px) and point the glTF image at it. Needs Pillow.
+def cut_out_leaves(m):
+  from PIL import Image
+  d=f'{root}/models/{m}/textures'
+  png=f'{d}/{m}_diff_1k.png'
+  if os.path.exists(png): return
+  f=get('https://api.polyhaven.com/files/'+m)
+  dl(f['Alpha']['1k']['png']['url'], f'{d}/{m}_alpha_1k.png')
+  a=Image.open(f'{d}/{m}_alpha_1k.png')
+  if a.mode in ('I','I;16','I;16B'): a=a.point(lambda v: v/257).convert('L')
+  a=a.convert('L').resize((512,512),Image.LANCZOS)
+  rgb=Image.open(f'{d}/{m}_diff_1k.jpg').convert('RGB').resize((512,512),Image.LANCZOS)
+  rgb.putalpha(a); rgb.save(png)
+  g=f'{root}/models/{m}/{m}_1k.gltf'
+  s=open(g).read().replace(f'{m}_diff_1k.jpg',f'{m}_diff_1k.png')
+  import re
+  s=re.sub(r'"image/jpeg",(\s*"name": "[^"]*",)?(\s*"uri": "textures/'+m+r'_diff_1k\.png")', r'"image/png",\1\2', s)
+  open(g,'w').write(s)
+  os.remove(f'{d}/{m}_alpha_1k.png'); os.remove(f'{d}/{m}_diff_1k.jpg')
+  print('leaves',m,flush=True)
+for m in ['fern_02','shrub_04','nettle_plant','weed_plant_02']:
+  cut_out_leaves(m)

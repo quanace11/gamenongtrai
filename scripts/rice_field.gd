@@ -168,8 +168,10 @@ func _set_ranges(mms: Array) -> void:
 		if i == 5: # near stubble reaches out to where lod 2 begins
 			mmi.visibility_range_end = ranges[1]
 			mmi.visibility_range_end_margin = 3.0
-		# Near hills shade each other and the water; far ones only receive.
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if lod < 2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# Only the nearest hills cast shadows (canopy self-shading at the
+		# player's feet): every shadow cascade redraws its casters, and the
+		# paddy would otherwise cost millions of triangles per frame.
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if lod == 0 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 func _fill_chunk(mms: Array, list: Array) -> void:

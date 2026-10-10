@@ -151,5 +151,11 @@ static func recolor(id: String, saturation: float, tint: Color, brightness := 1.
 		img.generate_mipmaps()
 		m.albedo_texture = ImageTexture.create_from_image(img)
 	m.albedo_color = tint
+	# rock_07 multiplies its albedo by dark baked vertex colours, and its
+	# roughness map is glossy (~0.3): together they gave the "chocolate
+	# block" look. Dry river stone is matte.
+	m.vertex_color_use_as_albedo = false
+	m.roughness_texture = null
+	m.roughness = 0.88
 	_mats[key] = m
 	return m

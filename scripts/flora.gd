@@ -40,8 +40,8 @@ static func material(kind: String) -> ShaderMaterial:
 		"seedling": # nursery bed: soft, short, fluttering
 			m.set_shader_parameter("sway", 0.12)
 			m.set_shader_parameter("flex_sway", 0.02)
-			m.set_shader_parameter("translucency", 0.45)
-			m.set_shader_parameter("rough", 0.55)
+			m.set_shader_parameter("translucency", 0.3)
+			m.set_shader_parameter("rough", 0.6)
 			m.set_shader_parameter("keep_normal", true)
 		"blade": # rice and grass: colour from vertices/instances
 			m.set_shader_parameter("sway", 0.09)
@@ -410,7 +410,7 @@ static func seedling_patch_mesh(n := 28, radius := 0.075) -> ArrayMesh:
 		var hgt := rng.randf_range(0.15, 0.25)
 		var k := rng.randf_range(0.85, 1.12)
 		var yellow := rng.randf()
-		var col := Color(0.46, 0.7, 0.2).lerp(Color(0.62, 0.78, 0.3), yellow * 0.6) * k
+		var col := Color(0.34, 0.56, 0.14).lerp(Color(0.5, 0.66, 0.22), yellow * 0.6) * k
 		var phi := rng.randf() * TAU
 		for j in rng.randi_range(3, 4):
 			var a := phi + PI * j + rng.randf_range(-0.6, 0.6)
@@ -430,8 +430,8 @@ static func seedling_patch_mesh(n := 28, radius := 0.075) -> ArrayMesh:
 				var cur := [p - side * ww, p + side * ww, p.y]
 				if s > 0:
 					var nrm := (Vector3.UP * 1.3 + d * 0.5).normalized()
-					var c0: Color = Color(0.72, 0.76, 0.5).lerp(col, minf((s - 1) / 1.5, 1.0))
-					var c1: Color = Color(0.72, 0.76, 0.5).lerp(col, minf(s / 1.5, 1.0))
+					var c0: Color = Color(0.62, 0.66, 0.42).lerp(col, minf((s - 1) / 1.5, 1.0))
+					var c1: Color = Color(0.62, 0.66, 0.42).lerp(col, minf(s / 1.5, 1.0))
 					if s == 4:
 						c1 = c1.lerp(Color(0.6, 0.55, 0.3), 0.35 * float(rng.randf() < 0.3))
 					c0.a = clampf(prev[2] / 0.25, 0.0, 1.0)

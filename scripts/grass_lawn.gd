@@ -1,8 +1,8 @@
 # The village lawn: short grass blades that follow the camera (see
 # shaders/grass_lawn.gdshader). Two MultiMeshes of single blades:
-#   near: a 24 m wrap patch, 12.5 cm apart on High (~64 blades per m²),
-#         4 segments, fading out at 8.5-11.5 m;
-#   far:  a 48 m patch of wider 2-segment blades that grows in where the
+#   near: a 24 m wrap patch of 4-blade tufts 16 cm apart on High (~155
+#         blades per m²), 3 segments, fading out at 8.5-11.5 m;
+#   far:  a 48 m patch of wider 2-segment tufts that grows in where the
 #         near patch fades and fades out by 23 m.
 # The mask (density, dryness, tall grass, trodden path) and the height map
 # are painted once from layout.gd: no grass in the paddy, courtyard, house,
@@ -16,7 +16,7 @@ const SHADER = preload("res://shaders/grass_lawn.gdshader")
 const MAP_RECT := Rect2(-40.0, -44.0, 80.0, 80.0)
 const RES := 256
 # [near grid, far grid] per quality level 0..2
-const GRIDS := [[128, 80], [160, 96], [192, 112]]
+const GRIDS := [[104, 72], [128, 88], [150, 104]]
 
 var shade_spots: Array = [] # [Vector3(x, z, radius)] under groves: thinner, drier grass
 var _near: MultiMeshInstance3D
@@ -28,8 +28,8 @@ func _ready() -> void:
 	add_to_group("quality")
 	var maps := _paint()
 	var nz := F.wind_noise()
-	_near = _patch(24.0, 4, Vector2(8.5, 11.5), Vector2.ZERO, 0.0028, maps, nz)
-	_far = _patch(48.0, 2, Vector2(18.0, 23.0), Vector2(8.0, 11.0), 0.0055, maps, nz)
+	_near = _patch(24.0, 3, Vector2(8.5, 11.5), Vector2.ZERO, 0.0055, maps, nz)
+	_far = _patch(48.0, 2, Vector2(18.0, 23.0), Vector2(8.0, 11.0), 0.0095, maps, nz)
 	set_quality(2)
 
 
@@ -55,27 +55,36 @@ func _set_grid(mmi: MultiMeshInstance3D, grid: int) -> void:
 	(mmi.material_override as ShaderMaterial).set_shader_parameter("grid", grid)
 
 
-static func blade_mesh(segs: int) -> ArrayMesh:
+# One tuft: `blades` blades of `segs` segments, all at the origin; the
+# shader spreads and bends them. UV = (across, along), UV2.x = blade index.
+static func blade_mesh(segs: int, blades := 4) -> ArrayMesh:
 	var v := PackedVector3Array()
 	var uv := PackedVector2Array()
+	var uv2 := PackedVector2Array()
 	var idx := PackedInt32Array()
-	for s in segs:
-		var t := float(s) / segs
-		v.append(Vector3(-0.01, t * 0.3, 0.0))
-		v.append(Vector3(0.01, t * 0.3, 0.0))
-		uv.append(Vector2(0.0, t))
-		uv.append(Vector2(1.0, t))
-	v.append(Vector3(0.0, 0.3, 0.0)) # tip
-	uv.append(Vector2(0.5, 1.0))
-	for s in segs - 1:
-		var a := s * 2
-		idx.append_array([a, a + 2, a + 1, a + 1, a + 2, a + 3])
-	var last := (segs - 1) * 2
-	idx.append_array([last, segs * 2, last + 1])
+	for bl in blades:
+		var o := v.size()
+		for s in segs:
+			var t := float(s) / segs
+			v.append(Vector3(-0.01, t * 0.3, 0.0))
+			v.append(Vector3(0.01, t * 0.3, 0.0))
+			uv.append(Vector2(0.0, t))
+			uv.append(Vector2(1.0, t))
+			uv2.append(Vector2(bl, 0.0))
+			uv2.append(Vector2(bl, 0.0))
+		v.append(Vector3(0.0, 0.3, 0.0)) # tip
+		uv.append(Vector2(0.5, 1.0))
+		uv2.append(Vector2(bl, 0.0))
+		for s in segs - 1:
+			var a := o + s * 2
+			idx.append_array([a, a + 2, a + 1, a + 1, a + 2, a + 3])
+		var last := o + (segs - 1) * 2
+		idx.append_array([last, o + segs * 2, last + 1])
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = v
 	arrays[Mesh.ARRAY_TEX_UV] = uv
+	arrays[Mesh.ARRAY_TEX_UV2] = uv2
 	arrays[Mesh.ARRAY_INDEX] = idx
 	var m := ArrayMesh.new()
 	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
