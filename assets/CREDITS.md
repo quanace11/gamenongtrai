@@ -76,3 +76,12 @@ Mô hình CC-BY 4.0 (phải ghi công tác giả):
 This work is based on "Realistic Pig / Porco 3D Model" (https://sketchfab.com/3d-models/realistic-pig-porco-3d-model-72834b8b47c7438c827cd0f2258ae656) by William Aleixo (https://sketchfab.com/WildMesh3DFree) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). The file was taken unchanged from a public GitHub mirror of the Sketchfab download; in the game its roughness is raised so the skin is matte.
 
 Trâu, vịt, bèo tây, núi đá vôi, tường, mái và sân gạch được dựng bằng code trong `scripts/world.gd`, `scripts/ducks.gd`, `scripts/courtyard.gd` và `shaders/` (ground, wall, roof, court, karst).
+
+## Tay người chơi và áo (gói PLAYER)
+
+| Asset | Tác giả · giấy phép | Dùng cho |
+|---|---|---|
+| [Godot XR Tools hand models](https://github.com/GodotVR/godot-xr-tools/tree/master/addons/godot-xr-tools/hands) (`Hand_Nails_R/L.gltf`, textures, grip poses) | DigitalN8m4r3 (Miodrag Sejic), dựng từ MakeHuman · [CC0 1.0](https://raw.githubusercontent.com/GodotVR/godot-xr-tools/master/addons/godot-xr-tools/hands/License.md) (bản sao ở `assets/models/hands/License.md`) | đôi tay cầm dụng cụ; màu da pha giữa hai texture realistic cho nước da nông dân rám nắng |
+| [rough_linen](https://polyhaven.com/a/rough_linen) | colormass, Rico Cilliers · CC0 | ống tay áo nâu xắn lên |
+
+Liềm, cuốc, đòn gánh, quang, lượm lúa và bó mạ được dựng bằng code trong `scripts/tools.gd`.

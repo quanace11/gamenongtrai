@@ -27,7 +27,7 @@ const HANDS := "res://assets/models/hands/"
 # forearm leaves the wrist along +Z. The left hand is the mirror image.
 const GRIP_AXIS := Vector3(0.08, 0.99, -0.1)
 const GRIP_CENTRE := Vector3(-0.022, -0.007, -0.068)
-const SKIN := Color8(179, 107, 75) # mean colour of the hand texture at the wrist
+const SKIN := Color8(167, 109, 83) # mean colour of the hand texture at the wrist
 
 var models := {}
 var current := "tay"
@@ -109,24 +109,22 @@ func _mat(id: String) -> BaseMaterial3D:
 	var m: BaseMaterial3D
 	match id:
 		"wood": # a handle polished by years of hands
-			m = A.pbr("weathered_planks", 1.0, false, Color(0.78, 0.6, 0.42)).duplicate()
-			m.uv1_scale = Vector3(1.0, 3.0, 1)
-			m.roughness = 0.75
-		"bamboo":
-			m = A.pbr("weathered_planks", 1.0, false, Color(1.15, 1.0, 0.68)).duplicate()
-			m.uv1_scale = Vector3(0.6, 4.0, 1)
+			m = _grained(Color(0.5, 0.34, 0.2), 0.55)
+		"bamboo": # dry pale bamboo
+			m = _grained(Color(0.78, 0.68, 0.45), 0.5)
 		"woven": # gàu: split bamboo woven into a scoop
 			m = A.pbr("bamboo_wall", 1.0, false, Color(1.05, 0.95, 0.75), true).duplicate()
 			m.uv1_scale = Vector3(2.0, 1.0, 1)
 		"straw":
-			m = A.pbr("thatch_roof_angled", 1.0, false, Color(1.25, 1.05, 0.62), true).duplicate()
-			m.uv1_scale = Vector3(1.0, 1.0, 1)
+			m = _grained(Color(0.85, 0.7, 0.38), 0.85)
+			m.cull_mode = BaseMaterial3D.CULL_DISABLED
 		"iron": # forged iron, dark with soil; the vertex colour brightens the honed edge
 			var s := StandardMaterial3D.new()
 			s.vertex_color_use_as_albedo = true
-			s.albedo_color = Color(0.42, 0.4, 0.38)
-			s.metallic = 0.8
-			s.roughness = 0.42
+			s.vertex_color_is_srgb = true
+			s.albedo_color = Color(0.5, 0.48, 0.46)
+			s.metallic = 0.45
+			s.roughness = 0.58
 			m = s
 		"skin":
 			var s := StandardMaterial3D.new()
@@ -165,6 +163,7 @@ func _mat(id: String) -> BaseMaterial3D:
 		"seedling":
 			var s := StandardMaterial3D.new()
 			s.vertex_color_use_as_albedo = true
+			s.vertex_color_is_srgb = true
 			s.roughness = 0.7
 			s.cull_mode = BaseMaterial3D.CULL_DISABLED
 			s.backlight_enabled = true
@@ -172,17 +171,51 @@ func _mat(id: String) -> BaseMaterial3D:
 			m = s
 		"mud":
 			var s := StandardMaterial3D.new()
-			s.albedo_color = Color(0.2, 0.15, 0.1)
-			s.roughness = 0.35 # wet
+			s.albedo_color = Color(0.32, 0.25, 0.18)
+			s.roughness = 0.4 # wet
+			m = s
+		"sheaf":
+			var s := StandardMaterial3D.new()
+			s.vertex_color_use_as_albedo = true
+			s.vertex_color_is_srgb = true
+			s.roughness = 0.85
+			s.cull_mode = BaseMaterial3D.CULL_DISABLED
 			m = s
 		"cloth":
 			var s := StandardMaterial3D.new()
 			s.vertex_color_use_as_albedo = true
+			s.vertex_color_is_srgb = true
 			s.roughness = 0.95
 			s.cull_mode = BaseMaterial3D.CULL_DISABLED
 			m = s
 	_m[id] = _vm(m)
 	return _m[id]
+
+
+# Plain colour with fine lengthwise streaks (wood or bamboo grain).
+static var _grain: NoiseTexture2D
+
+
+func _grained(c: Color, rough: float) -> StandardMaterial3D:
+	if _grain == null:
+		var n := FastNoiseLite.new()
+		n.frequency = 0.05
+		n.fractal_octaves = 3
+		_grain = NoiseTexture2D.new()
+		_grain.width = 32
+		_grain.height = 512
+		_grain.seamless = true
+		_grain.noise = n
+		var ramp := Gradient.new()
+		ramp.set_color(0, Color(0.72, 0.72, 0.72))
+		ramp.set_color(1, Color(1.08, 1.08, 1.08))
+		_grain.color_ramp = ramp
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.albedo_texture = _grain
+	m.uv1_scale = Vector3(60.0, 0.05, 1) # tube UVs are in metres: streaks run along the length
+	m.roughness = rough
+	return m
 
 
 func _add(parent: Node3D, mesh: Mesh, mat: String, xf := Transform3D.IDENTITY) -> MeshInstance3D:
@@ -311,10 +344,11 @@ func _make_hand(side: String) -> Node3D:
 	var arm := Node3D.new()
 	arm.name = "Arm"
 	root.add_child(arm)
-	_add(arm, _tube(0.0, 0.3, Vector2(0.025, 0.033), Vector2(0.036, 0.043), 14, 4, false), "skin", Transform3D(Basis.IDENTITY, Vector3(0, -0.002, 0.012)))
+	# Starts inside the hand and is capped, so a bent wrist shows no gap.
+	_add(arm, _tube(-0.02, 0.29, Vector2(0.024, 0.032), Vector2(0.036, 0.043), 14, 4, true), "skin", Transform3D(Basis.IDENTITY, Vector3(0, -0.002, 0)))
 	# Rolled cuff: a fat ring of folded cloth, then the sleeve to the elbow.
-	_add(arm, _tube(0.0, 0.055, Vector2(0.05, 0.057), Vector2(0.052, 0.059), 16, 3, true), "sleeve", Transform3D(Basis.IDENTITY, Vector3(0, -0.002, 0.17)))
-	_add(arm, _tube(0.0, 0.4, Vector2(0.047, 0.054), Vector2(0.056, 0.062), 16, 4, false), "sleeve", Transform3D(Basis.IDENTITY, Vector3(0, -0.002, 0.215)))
+	_add(arm, _tube(0.0, 0.055, Vector2(0.05, 0.057), Vector2(0.052, 0.059), 16, 3, true), "sleeve", Transform3D(Basis.IDENTITY, Vector3(0, -0.002, 0.15)))
+	_add(arm, _tube(0.0, 0.4, Vector2(0.047, 0.054), Vector2(0.056, 0.062), 16, 4, true), "sleeve", Transform3D(Basis.IDENTITY, Vector3(0, -0.002, 0.195)))
 	return root
 
 
@@ -362,11 +396,11 @@ func _place_hand(side: String, parent: Node3D, g: Array) -> void:
 	h.transform = Transform3D(b, point - b * (GRIP_CENTRE * Vector3(mx, 1, 1)))
 	# The forearm aims at the elbow; the wrist bends at most ~35°.
 	var arm: Node3D = h.get_node("Arm")
-	var wrist := Vector3(0, 0, 0.012)
+	var wrist := Vector3(0, 0, 0.02)
 	var d: Vector3 = (b.inverse() * (g[2] - h.transform.origin) - wrist).normalized()
 	if d.angle_to(Vector3.BACK) > 0.6:
 		d = Vector3.BACK.slerp(d, 0.6 / d.angle_to(Vector3.BACK))
-	arm.transform = Transform3D(_along(d, Vector3.UP), Vector3.ZERO)
+	arm.transform = Transform3D(_along(d, Vector3.UP), wrist)
 	_set_pose(side, g[3], g[4])
 
 
@@ -377,7 +411,9 @@ func _attach_hands() -> void:
 		_place_hand("l", bo_ma, _grips.bo_ma.l)
 	else:
 		_place_hand("l", models[current], g.l)
-	if ganh.visible and current == "tay":
+	if bo_ma.visible and current == "tay":
+		_place_hand("r", models.tay, _grips.bo_ma.r)
+	elif ganh.visible and current == "tay":
 		_place_hand("r", ganh, _grips.ganh.r)
 	else:
 		_place_hand("r", models[current], g.r)
@@ -386,30 +422,32 @@ func _attach_hands() -> void:
 # ---------------------------------------------------------------- tools
 func _build_tay() -> void:
 	var m: Node3D = models.tay
-	m.position = Vector3(0, -0.34, -0.36)
+	m.position = Vector3(0, -0.24, -0.34)
 	# Relaxed, half-open hands low in view, palms turned in and down.
-	_hold("tay", "r", Vector3(0.2, 0.0, -0.08), Vector3(-0.55, 0.45, -0.7), Vector3(0.26, -0.24, 0.24), "Grip", 0.35)
-	_hold("tay", "l", Vector3(-0.2, 0.0, -0.08), Vector3(0.55, 0.45, -0.7), Vector3(-0.26, -0.24, 0.24), "Grip", 0.35)
+	_hold("tay", "r", Vector3(0.22, -0.02, -0.06), Vector3(-0.85, 0.5, 0.0), Vector3(0.28, -0.36, 0.26), "Grip", 0.2)
+	_hold("tay", "l", Vector3(-0.22, -0.02, -0.06), Vector3(0.85, 0.5, 0.0), Vector3(-0.28, -0.36, 0.26), "Grip", 0.2)
+	# Transplanting: the right hand pinches seedlings from the bó mạ.
+	_hold("bo_ma", "r", Vector3(0.2, 0.0, -0.1), Vector3(-0.5, 0.3, -0.8), Vector3(0.26, -0.36, 0.24), "Pinch Tight", 1.0)
 
 
 func _build_cuoc() -> void:
 	var m: Node3D = models.cuoc
-	m.position = Vector3(0.14, -0.4, -0.3)
+	m.position = Vector3(0.15, -0.21, -0.36)
 	# Handle forward and down to the blade near the ground; both hands
 	# overhand, thumbs toward the blade.
-	var d := Vector3(-0.2, -0.5, -1.0).normalized()
+	var d := Vector3(-0.3, -0.04, -1.0).normalized()
 	var butt := -d * 0.06
 	var tip := d * 1.1
 	_rod(m, butt, tip, 0.019, 0.017, "wood")
 	# Socket (khâu) and neck: the blade hangs back toward the farmer at ~65°.
 	var side := d.cross(Vector3.UP).normalized()
-	var down := side.cross(d).normalized()
+	var down := d.cross(side).normalized()
 	_rod(m, tip - d * 0.06, tip + d * 0.025, 0.026, 0.024, "iron", 12)
 	var e := (d * cos(deg_to_rad(115)) + down * sin(deg_to_rad(115))).normalized()
 	var bx := Basis(side, -e, side.cross(-e))
 	_add(m, _hoe_blade(), "iron", Transform3D(bx, tip + d * 0.01))
-	_hold("cuoc", "r", Vector3.ZERO, d, Vector3(0.14, -0.2, 0.3))
-	_hold("cuoc", "l", d * 0.42, d, Vector3(-0.2, -0.12, 0.25))
+	_hold("cuoc", "r", Vector3.ZERO, d, Vector3(0.14, -0.36, 0.24))
+	_hold("cuoc", "l", d * 0.4, d, Vector3(-0.14, -0.22, 0.3))
 
 
 # Trapezoid iron blade: a narrow neck, then 11 cm widening to a 17 cm edge,
@@ -431,7 +469,7 @@ func _hoe_blade() -> ArrayMesh:
 
 func _build_bua() -> void:
 	var m: Node3D = models.bua
-	m.position = Vector3(0, -0.5, -0.48)
+	m.position = Vector3(0, -0.27, -0.46)
 	# Bừa: a bamboo handle bar at waist height, two uprights down to the
 	# toothed beam that drags through the mud ahead.
 	_rod(m, Vector3(-0.34, 0, 0), Vector3(0.34, 0, 0), 0.02, 0.02, "bamboo")
@@ -449,8 +487,8 @@ func _build_bua() -> void:
 
 func _build_gau() -> void:
 	var m: Node3D = models.gau
-	m.position = Vector3(0.14, -0.38, -0.3)
-	var d := Vector3(-0.15, -0.42, -1.0).normalized()
+	m.position = Vector3(0.15, -0.21, -0.36)
+	var d := Vector3(-0.2, -0.26, -1.0).normalized()
 	_rod(m, -d * 0.06, d * 0.95, 0.017, 0.015, "bamboo")
 	# Woven scoop: open toward the farmer and up, like a big spoon.
 	var cone := CylinderMesh.new()
@@ -469,13 +507,13 @@ func _build_gau() -> void:
 	rim.rings = 24
 	rim.ring_segments = 6
 	_add(m, rim, "bamboo", Transform3D(b, d * 1.05 + axis * 0.18))
-	_hold("gau", "r", Vector3.ZERO, d, Vector3(0.14, -0.2, 0.3))
-	_hold("gau", "l", d * 0.4, d, Vector3(-0.2, -0.12, 0.25))
+	_hold("gau", "r", Vector3.ZERO, d, Vector3(0.14, -0.36, 0.24))
+	_hold("gau", "l", d * 0.38, d, Vector3(-0.14, -0.22, 0.3))
 
 
 func _build_liem() -> void:
 	var m: Node3D = models.liem
-	m.position = Vector3(0.21, -0.29, -0.42)
+	m.position = Vector3(0.2, -0.17, -0.42)
 	# Liềm: a short wooden handle in the right fist, the toothed crescent
 	# blade curling forward and to the left from its top.
 	var d := Vector3(-0.3, 0.85, -0.42).normalized()
@@ -484,9 +522,9 @@ func _build_liem() -> void:
 	var v := Vector3(-1.0, 0.0, -0.75)
 	v = (v - d * v.dot(d)).normalized()
 	_add(m, _sickle_blade(), "iron", Transform3D(Basis(v, d, v.cross(d)), d * 0.15))
-	_hold("liem", "r", Vector3.ZERO, d, Vector3(0.09, -0.24, 0.3))
+	_hold("liem", "r", Vector3.ZERO, d, Vector3(0.26, 0.02, 0.16))
 	# The left hand is free, half open, ready to gather the stalks.
-	_hold("liem", "l", Vector3(-0.46, -0.06, 0.04), Vector3(0.4, 0.6, -0.7), Vector3(-0.47, -0.3, 0.42), "Grip", 0.4)
+	_hold("liem", "l", Vector3(-0.44, -0.04, 0.0), Vector3(0.85, 0.5, 0.0), Vector3(-0.5, -0.4, 0.3), "Grip", 0.2)
 
 
 # Crescent blade in its own frame: X toward the inside of the curve, Y up
@@ -518,8 +556,8 @@ func _sickle_blade() -> ArrayMesh:
 
 func _build_cao() -> void:
 	var m: Node3D = models.cao
-	m.position = Vector3(0.12, -0.38, -0.3)
-	var d := Vector3(-0.15, -0.5, -1.0).normalized()
+	m.position = Vector3(0.14, -0.21, -0.36)
+	var d := Vector3(-0.2, -0.32, -1.0).normalized()
 	var tip := d * 1.5
 	_rod(m, -d * 0.06, tip, 0.018, 0.017, "wood")
 	# Cào thóc: a wooden board with short teeth, for raking paddy on the yard.
@@ -529,13 +567,13 @@ func _build_cao() -> void:
 	for i in 9:
 		var x := -0.24 + i * 0.06
 		_rod(m, tip + b * Vector3(x, -0.03, 0), tip + b * Vector3(x, -0.11, 0.01), 0.008, 0.005, "wood", 6)
-	_hold("cao", "r", Vector3.ZERO, d, Vector3(0.14, -0.2, 0.3))
-	_hold("cao", "l", d * 0.45, d, Vector3(-0.2, -0.12, 0.25))
+	_hold("cao", "r", Vector3.ZERO, d, Vector3(0.14, -0.36, 0.24))
+	_hold("cao", "l", d * 0.42, d, Vector3(-0.14, -0.22, 0.3))
 
 
 func _build_sao() -> void:
 	var m: Node3D = models.sao
-	m.position = Vector3(0.16, -0.32, -0.32)
+	m.position = Vector3(0.16, -0.2, -0.36)
 	# A long bamboo pole raised ahead, rag strips tied at the tip.
 	var d := Vector3(-0.12, 0.62, -1.0).normalized()
 	var tip := d * 2.6
@@ -551,8 +589,8 @@ func _build_sao() -> void:
 		m.add_child(s)
 		_add(s, _strip(0.045, 0.5, cols[i]), "cloth")
 		streamers.append(s)
-	_hold("sao", "r", Vector3.ZERO, d, Vector3(0.14, -0.22, 0.3))
-	_hold("sao", "l", d * 0.42, d, Vector3(-0.2, -0.2, 0.22))
+	_hold("sao", "r", Vector3.ZERO, d, Vector3(0.14, -0.38, 0.22))
+	_hold("sao", "l", d * 0.32, d, Vector3(-0.2, -0.38, 0.14))
 
 
 # A hanging strip of cloth, from the knot down.
@@ -568,7 +606,7 @@ static func _strip(w: float, h: float, c: Color) -> ArrayMesh:
 
 func _build_bo_ma() -> void:
 	bo_ma = Node3D.new()
-	bo_ma.position = Vector3(-0.22, -0.3, -0.42)
+	bo_ma.position = Vector3(-0.2, -0.2, -0.42)
 	bo_ma.rotation = Vector3(0.35, 0, 0.25)
 	bo_ma.visible = false
 	rig.add_child(bo_ma)
@@ -616,7 +654,7 @@ func _build_ganh() -> void:
 	# Đòn gánh: a flat bamboo strip on the right shoulder along the walking
 	# direction, bending under the two loads; each load hangs from a quang
 	# (four ropes) as a pendulum.
-	var pole := _tube(-0.85, 0.85, Vector2(0.028, 0.011), Vector2(0.028, 0.011), 10, 12, true, -0.05)
+	var pole := _tube(-0.85, 0.85, Vector2(0.024, 0.01), Vector2(0.024, 0.01), 10, 12, true, -0.05)
 	_add(ganh, pole, "bamboo", Transform3D(Basis.IDENTITY, Vector3.ZERO))
 	for k in 2:
 		var z := -0.78 if k == 0 else 0.78
@@ -640,15 +678,62 @@ func _build_ganh() -> void:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 3 + k
 		for s in 6:
-			var ang := rng.randf_range(-0.5, 0.5) + (PI / 2 if s % 2 == 1 else 0.0)
-			var y := -drop + 0.07 + s * 0.06
+			var ang := PI / 2 + rng.randf_range(-0.25, 0.25) + (PI if s % 2 == 1 else 0.0)
+			var y := -drop + 0.06 + s * 0.045
 			var sb := Basis(Vector3.UP, ang)
 			var sheaf := Node3D.new()
 			sheaf.transform = Transform3D(sb, Vector3(rng.randf_range(-0.03, 0.03), y, rng.randf_range(-0.03, 0.03)))
 			ld.add_child(sheaf)
-			_add(sheaf, _tube(-0.26, 0.26, Vector2(0.04, 0.035), Vector2(0.075, 0.06), 10, 2), "straw", Transform3D(Basis(Vector3.UP, PI / 2), Vector3.ZERO))
-			_rod(sheaf, Vector3(-0.1, 0, 0), Vector3(-0.08, 0, 0), 0.044, 0.044, "rope", 8)
+			_add(sheaf, _sheaf_mesh(), "sheaf")
+			_rod(sheaf, Vector3(-0.13, 0, 0), Vector3(-0.11, 0, 0), 0.032, 0.032, "rope", 8)
 	_hold("ganh", "r", Vector3(0, 0.02, -0.32), Vector3(0, 0, -1), Vector3(0.13, -0.3, -0.05))
+
+
+# A lượm of cut rice along +X: straw butts at -X, tied near the butt,
+# heavy golden panicles drooping at +X. One mesh shared by every sheaf.
+static var _sheaf: ArrayMesh
+
+
+static func _sheaf_mesh() -> ArrayMesh:
+	if _sheaf != null:
+		return _sheaf
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 11
+	for i in 60:
+		var a := rng.randf() * TAU
+		var rr := sqrt(rng.randf())
+		var off := Vector2(cos(a), sin(a)) * rr
+		var tw := Vector3(0, cos(a + 1.3), sin(a + 1.3))
+		var len := rng.randf_range(0.5, 0.6)
+		var droop := rng.randf_range(0.04, 0.1)
+		var pts := []
+		for k in 7:
+			var t := k / 6.0
+			var x := -0.24 + t * len
+			# Bundle radius: splayed butts, tight at the tie, fanning heads.
+			var rad := lerpf(0.045, 0.028, smoothstep(0.0, 0.2, t)) if t < 0.35 else lerpf(0.028, 0.075, (t - 0.35) / 0.65)
+			var yz := off * rad
+			var y := yz.x - droop * maxf(0.0, t - 0.6) * maxf(0.0, t - 0.6) / 0.16
+			pts.append([Vector3(x, y, yz.y), t])
+		for k in 6:
+			var p0: Vector3 = pts[k][0]
+			var p1: Vector3 = pts[k + 1][0]
+			var t0: float = pts[k][1]
+			var t1: float = pts[k + 1][1]
+			# Panicles are wider and darker gold than the straw.
+			var w0 := 0.0025 if t0 < 0.65 else 0.006
+			var w1 := 0.0025 if t1 < 0.65 else 0.006
+			var straw := Color(0.64, 0.53, 0.29)
+			var head := Color(0.55, 0.4, 0.15)
+			var c0 := straw.lerp(head, smoothstep(0.55, 0.8, t0)).darkened(rng.randf() * 0.15)
+			var c1 := straw.lerp(head, smoothstep(0.55, 0.8, t1))
+			for q in [[p0 - tw * w0, c0], [p0 + tw * w0, c0], [p1 + tw * w1, c1], [p0 - tw * w0, c0], [p1 + tw * w1, c1], [p1 - tw * w1, c1]]:
+				st.set_color(q[1]); st.add_vertex(q[0])
+	st.generate_normals()
+	_sheaf = st.commit()
+	return _sheaf
 
 
 func select(id: String) -> void:
