@@ -76,7 +76,7 @@ static func _leaf(b: Buf, p0: Vector3, dirh: Vector3, length: float, width: floa
 		var nrm := acr.cross(tng).normalized()
 		if nrm.y < 0.0:
 			nrm = -nrm
-		nrm = _canopy(nrm, p, 0.35)
+		nrm = _canopy(nrm, p, 0.2)
 		# narrow at the collar, widest at about 40 %, long acuminate tip
 		var w := width * (0.55 + 0.45 * sin(PI * minf(f * 1.25, 1.0) * 0.5 + 0.25)) * (1.0 - pow(f, 2.2))
 		var col := Color(organ, rank, r, 0.0)
@@ -203,7 +203,7 @@ static func hill(s: float, seed: int, lod := 0) -> ArrayMesh:
 	var leaf_len := lerpf(0.19, 0.42, smoothstep(0.0, 0.48, s))
 	# half width: 5 mm seedling leaves to 10-11 mm; the far lods widen to keep
 	# cover, seedlings most of all (a 5 mm leaf is sub-pixel past ~8 m)
-	var leaf_w: float = lerpf(0.0026, 0.0052, smoothstep(0.0, 0.42, s)) * [1.0, 1.35, lerpf(3.5, 2.0, smoothstep(0.0, 0.4, s))][lod]
+	var leaf_w: float = lerpf(0.0026, 0.0052, smoothstep(0.0, 0.42, s)) * [1.0, 1.15, lerpf(3.5, 2.0, smoothstep(0.0, 0.4, s))][lod]
 	var segs: int = [5, 3, 2][lod]
 	var across: int = [3, 2, 2][lod]
 	var nleaf: int = [4, 3, 2][lod]
@@ -220,7 +220,7 @@ static func hill(s: float, seed: int, lod := 0) -> ArrayMesh:
 		var base := out * rng.randf_range(0.0, spread)
 		var hc := collar * rng.randf_range(0.8, 1.05)
 		if lod == 0:
-			_culm(leaves, base, axis, hc + (0.06 if heading else 0.0), 0.0035, 0.0022, rng.randf())
+			_culm(leaves, base, axis, hc + (0.12 if heading else 0.0), 0.0035, 0.0022, rng.randf())
 		elif lod == 1 and s > 0.3:
 			_culm(leaves, base, axis, hc, 0.004, 0.003, rng.randf(), 2)
 		var phi := az + rng.randf_range(-0.6, 0.6)
@@ -240,10 +240,13 @@ static func hill(s: float, seed: int, lod := 0) -> ArrayMesh:
 			var droop := deg_to_rad(lerpf(14.0, 75.0, rank) * clampf(ln / 0.42, 0.35, 1.2)) * rng.randf_range(0.7, 1.3)
 			if flag:
 				droop *= 0.4 # the flag leaf stands erect
-			_leaf(leaves, hp, dirh, ln, wd, th0, droop, rng.randf_range(-1.2, 1.2), segs, across, rank, rng.randf())
+			# lod 0: the short drooping lower leaves need one segment less
+			var sg := segs - 1 if lod == 0 and rank > 0.5 else segs
+			_leaf(leaves, hp, dirh, ln, wd, th0, droop, rng.randf_range(-1.2, 1.2), sg, across, rank, rng.randf())
 			plant_top = maxf(plant_top, hp.y + ln * cos(th0 + droop * 0.5) * 0.95)
 		if heading and ti < int(ceil(tiller_n * 0.85)):
-			var neck := base + axis * (hc + 0.06 + 0.05 * rng.randf())
+			# the neck clears the erect flag leaf so the panicle shows
+			var neck := base + axis * (hc + 0.12 + 0.06 * rng.randf())
 			if lod == 0:
 				_panicle(pan, neck, out, ripe, rng, 0)
 			else:
@@ -297,8 +300,8 @@ static func grain_texture() -> ImageTexture:
 			for g in n:
 				var side := -1.0 if g % 2 == 0 else 1.0
 				var cy := (g + 0.5) / n
-				var dy := (v - cy) / 0.048
-				var dx := (u - side * 0.26) / 0.19
+				var dy := (v - cy) / 0.055
+				var dx := (u - side * 0.26) / 0.24
 				var d := dx * dx + dy * dy
 				if d < 1.0:
 					best = 1.0

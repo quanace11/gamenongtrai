@@ -1182,30 +1182,63 @@ static func _plants(root: Node3D) -> void:
 	for i in 500:
 		var x: float = [L.CANAL.x0 - 0.25, L.CANAL.x1 + 0.25][i % 2] + rng.randf_range(-0.2, 0.2)
 		tall.append(Vector3(x, 0, rng.randf_range(-34, 30)))
-	F.grass(root, tall, F.tuft_mesh(16, 0.42, 0.0055), rng, 0.3, 8.0, 40.0)
+	F.grass(root, tall, F.tuft_mesh(16, 0.42, 0.0055), rng, 0.15, 8.0, 40.0)
 
 	# Poly Haven plants and rocks around the edges
+	# shrub_04 is a 22 cm model and the nettle parts 2-22 cm: scaled up so
+	# they stand out of the 10-28 cm lawn. Each shrub gets a fern beside it,
+	# not on top of it. Nettles grow where the lawn stops: along the house,
+	# sheds and pens, and on the pond rim.
 	var weeds := []
 	var shrubs := []
+	var ferns := []
 	var rocks := []
-	for i in 140:
+	for i in 50:
 		var x := rng.randf_range(-30, 30)
 		var z := rng.randf_range(-34, 28)
 		if not _clear_for_grass(x, z):
 			continue
-		var pt := [Vector3(x, 0, z), rng.randf() * TAU, rng.randf_range(0.8, 1.6)]
-		if i % 3 == 0:
-			shrubs.append(pt)
-		else:
-			weeds.append(pt)
+		shrubs.append([Vector3(x, L.ground_y(x, z), z), rng.randf() * TAU, rng.randf_range(2.5, 4.0)])
+		var a := rng.randf() * TAU
+		var d := rng.randf_range(0.6, 1.2)
+		var f := Vector2(x + cos(a) * d, z + sin(a) * d)
+		if _clear_for_grass(f.x, f.y):
+			ferns.append([Vector3(f.x, L.ground_y(f.x, f.y), f.y), rng.randf() * TAU, rng.randf_range(1.5, 2.5)])
+	var walls: Array = L.BLOCKERS.duplicate()
+	walls.append([L.DUCK_PEN.x0, L.DUCK_PEN.x1, L.DUCK_PEN.z0, L.DUCK_PEN.z1])
+	for b in walls:
+		var per: float = 2.0 * ((b[1] - b[0]) + (b[3] - b[2]))
+		for k in int(per / 2.5):
+			# a point on the rectangle's outline, 15-35 cm outside it
+			var u := rng.randf() * per
+			var o := rng.randf_range(0.15, 0.35)
+			var q: Vector2
+			var w: float = b[1] - b[0]
+			var h: float = b[3] - b[2]
+			if u < w:
+				q = Vector2(b[0] + u, b[2] - o)
+			elif u < w + h:
+				q = Vector2(b[1] + o, b[2] + u - w)
+			elif u < 2.0 * w + h:
+				q = Vector2(b[1] - (u - w - h), b[3] + o)
+			else:
+				q = Vector2(b[0] - o, b[3] - (u - 2.0 * w - h))
+			if L.in_court(q.x, q.y) or L.blocked(q.x, q.y) or L.in_field(q.x, q.y, L.FIELD.bund + 0.3):
+				continue
+			weeds.append([Vector3(q.x, L.ground_y(q.x, q.y), q.y), rng.randf() * TAU, rng.randf_range(2.0, 3.0)])
+	for i in 18:
+		var a := rng.randf() * TAU
+		var r: float = L.POND.r + rng.randf_range(0.25, 0.5)
+		var q := Vector2(L.POND.x + cos(a) * r, L.POND.z + sin(a) * r)
+		weeds.append([Vector3(q.x, L.ground_y(q.x, q.y), q.y), rng.randf() * TAU, rng.randf_range(2.0, 3.0)])
 	# River stones on the pond rim and canal banks: grey, half buried, a few
 	# small ones beside each bigger one.
 	for i in 22:
 		var a := rng.randf() * TAU
 		var r: float = L.POND.r + rng.randf_range(0.25, 0.9)
-		rocks.append([Vector3(L.POND.x + cos(a) * r, 0.0, L.POND.z + sin(a) * r), rng.randf() * TAU, rng.randf_range(0.8, 1.7)])
+		rocks.append([Vector3(L.POND.x + cos(a) * r, 0.0, L.POND.z + sin(a) * r), rng.randf() * TAU, rng.randf_range(1.0, 2.0)])
 	for i in 26:
-		rocks.append([Vector3([L.CANAL.x0 - 0.35, L.CANAL.x1 + 0.35][i % 2] + rng.randf_range(-0.15, 0.15), 0.0, rng.randf_range(-30, 26)), rng.randf() * TAU, rng.randf_range(0.8, 1.6)])
+		rocks.append([Vector3([L.CANAL.x0 - 0.35, L.CANAL.x1 + 0.35][i % 2] + rng.randf_range(-0.15, 0.15), 0.0, rng.randf_range(-30, 26)), rng.randf() * TAU, rng.randf_range(1.0, 2.0)])
 	# Every stone sits on the real ground height; none in the canal or the
 	# pond water (the canal floor is 0.75 m down, so they would float).
 	var stones := []
@@ -1222,12 +1255,13 @@ static func _plants(root: Node3D) -> void:
 		var v: Vector3 = p[0]
 		p[0] = Vector3(v.x, L.ground_y(v.x, v.z), v.z)
 	rocks = stones
-	# knee-high weeds cast no shadows (one less pass per cascade)
-	A.scatter(root, "weed_plant_02", weeds, false, 30.0)
-	A.scatter(root, "nettle_plant", weeds.slice(0, weeds.size() / 2), false, 30.0)
+	# knee-high weeds cast no shadows (one less pass per cascade).
+	# weed_plant_02 is dropped: its parts are 4-7 cm tall, invisible in the
+	# lawn at any sane scale.
+	A.scatter(root, "nettle_plant", weeds, false, 30.0)
 	A.scatter(root, "shrub_04", shrubs, true, 40.0)
-	A.scatter(root, "fern_02", shrubs, true, 40.0)
-	A.scatter(root, "rock_07", rocks, true, 45.0, 0.4, A.recolor("rock_07", 0.25, Color(0.9, 0.92, 0.94), 1.2))
+	A.scatter(root, "fern_02", ferns, true, 40.0)
+	A.scatter(root, "rock_07", rocks, true, 45.0, 0.22, A.recolor("rock_07", 0.25, Color(0.95, 0.95, 0.93), 1.35))
 	A.scatter(root, "stone_01", pebbles, false, 25.0, 0.35, A.recolor("stone_01", 0.2, Color(0.86, 0.87, 0.88), 1.1))
 
 

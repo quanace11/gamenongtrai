@@ -73,7 +73,7 @@ void vertex() {
 	}
 	// clumpy growth: thin patches and dense tussocks
 	float clump = textureLod(noise, root * 0.09 + vec2(0.13, 0.57), 0.0).r;
-	float keep = m.r * mix(0.75, 1.2, smoothstep(0.3, 0.7, clump));
+	float keep = m.r * mix(0.9, 1.3, smoothstep(0.3, 0.7, clump));
 	float t = UV.y;                // 0 root .. 1 tip
 	float side = UV.x * 2.0 - 1.0; // -1 .. 1 across
 	bool outside = muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0;
@@ -115,7 +115,9 @@ void vertex() {
 		vec3 n = normalize(cross(across, tng));
 		n *= sign(n.y + 1e-3);
 		n = normalize(n + across * side * 0.6);            // rounded blade
-		n = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.5));   // soft, lawn-like lighting
+		// mostly up: shaded blades take the same ambient as the ground under them
+		// instead of reading as dark spikes
+		n = normalize(mix(n, vec3(0.0, 1.0, 0.0), 0.7));
 		VERTEX = vec3(root.x, ground, root.y) + across * (side * w) + pos;
 		NORMAL = n;
 		// Colour: patches of lush, fresh and dry grass; dark, earthy roots.
@@ -123,7 +125,7 @@ void vertex() {
 		vec3 c = mix(lush, fresh, smoothstep(0.3, 0.75, patchy));
 		c = mix(c, dry, clamp(m.g * 0.75 + (r3 - 0.5) * 0.3 + m.a * 0.3 - 0.05, 0.0, 1.0));
 		c *= 0.8 + 0.22 * r2 + 0.16 * r4;
-		v_col = mix(mix(soil, c, 0.65) * 0.85, c, smoothstep(0.0, 0.45, t));
+		v_col = mix(mix(soil, c, 0.8) * 0.9, c, smoothstep(0.0, 0.45, t));
 		v_t = t;
 	}
 }
@@ -144,6 +146,6 @@ void fragment() {
 	ROUGHNESS = mix(0.62, 0.35, wetness);
 	SPECULAR = 0.32;
 	BACKLIGHT = v_col * 0.5;
-	AO = mix(0.5, 1.0, smoothstep(0.0, 0.8, v_t));
-	AO_LIGHT_AFFECT = 0.3;
+	AO = mix(0.75, 1.0, smoothstep(0.0, 0.6, v_t));
+	AO_LIGHT_AFFECT = 0.1;
 }

@@ -15,12 +15,14 @@ const PANICLE = preload("res://shaders/rice_panicle.gdshader")
 const CHUNK := 2.0
 const NC := 8 # chunks per side
 const VARIANTS := [2, 2, 1] # meshes per level of detail
-# lod 0 ends, lod 1 ends (metres). Kept short: with 3 x 3 hills per clump
-# a ripe paddy holds ~5,600 hills, and every lod-0 hill (~2.2 k triangles)
-# is drawn in the depth prepass, the colour pass and the shadow cascades.
-const BASE_RANGES := [2.5, 8.0]
+# lod 0 ends, lod 1 ends (metres). lod 0 covers the focal band in front of
+# the player (from 1.6 m eye height, 4 m is a third of the way up the
+# paddy); only its first 3 m casts shadows, since every cascade redraws its
+# casters and a ripe paddy holds ~5,600 hills on High.
+const BASE_RANGES := [4.0, 10.0]
+const SHADOW_END := 3.0
 # Dithered fade-out width of lod 0 and lod 1 (metres either side of the end).
-const MARGINS := [1.0, 2.0]
+const MARGINS := [1.2, 2.0]
 
 var sub := 3
 var ranges: Array = BASE_RANGES.duplicate()
@@ -28,6 +30,7 @@ var _stage := -1.0
 var _meshes := [] # [lod][variant]
 var _stubble := [] # [lod]
 var _leaf_mat: ShaderMaterial
+var _far_mat: ShaderMaterial # lod 1-2 leaves: 2 vertices across, no waxy streak
 var _pan_mat: ShaderMaterial
 var _stub_mat: ShaderMaterial
 var _chunks := {} # Vector2i -> {"sig": String, "mm": [MultiMeshInstance3D x 8]}
@@ -42,13 +45,17 @@ func _ready() -> void:
 	_pan_mat = ShaderMaterial.new()
 	_pan_mat.shader = PANICLE
 	_pan_mat.set_shader_parameter("grain_tex", R.grain_texture())
+	_far_mat = ShaderMaterial.new()
+	_far_mat.shader = RICE
+	# the 2-vertex leaves' split normals turn the streak into silver flashes
+	_far_mat.set_shader_parameter("aniso", 0.0)
 	_stub_mat = ShaderMaterial.new()
 	_stub_mat.shader = RICE
 	_stub_mat.set_shader_parameter("stubble", 1.0)
 	_stub_mat.set_shader_parameter("ripe", 1.0)
 	_stub_mat.set_shader_parameter("stage", 1.0)
 	_stub_mat.set_shader_parameter("plant_height", 0.2)
-	for m in [_leaf_mat, _pan_mat, _stub_mat]:
+	for m in [_leaf_mat, _far_mat, _pan_mat, _stub_mat]:
 		m.set_shader_parameter("noise", nz)
 	for lod in 2:
 		var sm := R.stubble(900 + lod, lod)
@@ -78,7 +85,7 @@ func set_quality(level: int) -> void:
 
 
 func set_water_y(y: float) -> void:
-	for m in [_leaf_mat, _pan_mat, _stub_mat]:
+	for m in [_leaf_mat, _far_mat, _pan_mat, _stub_mat]:
 		m.set_shader_parameter("water_y", y)
 
 
@@ -91,7 +98,7 @@ func update(clumps: Array, growth_day: int, pest: float, health: float) -> void:
 		_stage = s
 		_build_meshes(s)
 	var stress := (clampf(pest - 0.3, 0.0, 0.7) + (1.0 - health) * 0.5) * (1.0 - ripe)
-	for m in [_leaf_mat, _pan_mat]:
+	for m in [_leaf_mat, _far_mat, _pan_mat]:
 		m.set_shader_parameter("stage", s)
 		m.set_shader_parameter("ripe", ripe)
 		m.set_shader_parameter("stress", stress)
@@ -108,11 +115,12 @@ func update(clumps: Array, growth_day: int, pest: float, health: float) -> void:
 			groups[k] = []
 	for k in groups:
 		var list: Array = groups[k]
-		var cut := 0
+		# content signature: positions too, so a reseed or a loaded game with
+		# the same clump count per chunk is not left showing stale hills
+		var h := sub
 		for c in list:
-			if c.cut:
-				cut += 1
-		var sig := "%d|%d|%d" % [list.size(), cut, sub]
+			h = hash([h, c.x, c.z, c.cut])
+		var sig := "%d|%d" % [list.size(), h]
 		if not _chunks.has(k):
 			if list.is_empty():
 				continue
@@ -129,7 +137,7 @@ func _build_meshes(s: float) -> void:
 		var row := []
 		for v in VARIANTS[lod]:
 			var m := R.hill(s, 101 + v * 17, lod)
-			m.surface_set_material(0, _leaf_mat)
+			m.surface_set_material(0, _leaf_mat if lod == 0 else _far_mat)
 			if m.get_surface_count() > 1:
 				m.surface_set_material(1, _pan_mat)
 			row.append(m)
@@ -144,7 +152,8 @@ func _build_meshes(s: float) -> void:
 
 
 # 5 hill MultiMeshes (lod 0 x2, lod 1 x2, lod 2) + 2 stubble MultiMeshes
-# + a shadow-only lod-2 proxy so the middle band keeps its canopy shading.
+# + a shadow-only lod-2 proxy so the middle band keeps its canopy shading,
+# + 2 shadow-only nodes sharing the lod-0 MultiMeshes out to SHADOW_END.
 func _make_chunk(k: Vector2i) -> Array:
 	var out := []
 	var box := AABB(Vector3(L.FIELD.x0 + k.x * CHUNK - 0.6, L.FIELD.y - 0.1, L.FIELD.z0 + k.y * CHUNK - 0.6), Vector3(CHUNK + 1.2, 1.5, CHUNK + 1.2))
@@ -166,6 +175,12 @@ func _make_chunk(k: Vector2i) -> Array:
 		mmi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
 		add_child(mmi)
 		out.append(mmi)
+	for i in 2:
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = (out[i] as MultiMeshInstance3D).multimesh
+		mmi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+		add_child(mmi)
+		out.append(mmi)
 	_set_ranges(out)
 	return out
 
@@ -177,7 +192,7 @@ func _set_ranges(mms: Array) -> void:
 	# of holes where both are half transparent.
 	for i in mms.size():
 		var mmi: MultiMeshInstance3D = mms[i]
-		var lod := 0 if i < 2 else (1 if i < 4 else (2 if i < 5 else (0 if i == 5 else 2)))
+		var lod := 0 if i < 2 else (1 if i < 4 else (2 if i < 5 else (0 if i == 5 else (2 if i == 7 else 0))))
 		mmi.visibility_range_begin = 0.0 if lod == 0 else ranges[lod - 1] - MARGINS[lod - 1]
 		mmi.visibility_range_begin_margin = 0.0
 		mmi.visibility_range_end = ranges[lod] if lod < 2 else 0.0
@@ -188,9 +203,14 @@ func _set_ranges(mms: Array) -> void:
 		# Only the nearest hills cast shadows (canopy self-shading at the
 		# player's feet): every shadow cascade redraws its casters, and the
 		# paddy would otherwise cost millions of triangles per frame.
-		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if lod == 0 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if i == 5 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if i >= 8: # lod-0 shadows, near band only
+			mmi.visibility_range_end = SHADOW_END
+			mmi.visibility_range_end_margin = 0.0
+			mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		if i == 7: # cheap lod-2 shadow caster for the middle band
-			mmi.visibility_range_begin = ranges[0]
+			mmi.visibility_range_begin = SHADOW_END
 			# out to 6 m only: a ring of shadow casters costs its area in
 			# every cascade, and farther out the shading is lost in the haze
 			mmi.visibility_range_end = ranges[1] - MARGINS[1]
@@ -233,3 +253,5 @@ func _fill_chunk(mms: Array, list: Array) -> void:
 			mm.set_instance_transform(j, hs[j][0])
 			mm.set_instance_custom_data(j, hs[j][1])
 		(mms[i] as MultiMeshInstance3D).visible = hs.size() > 0
+	for i in 2:
+		(mms[8 + i] as MultiMeshInstance3D).visible = hills[i].size() > 0

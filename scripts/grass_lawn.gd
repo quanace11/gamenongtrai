@@ -2,9 +2,10 @@
 # shaders/grass_lawn.gdshader). Two MultiMeshes of single blades:
 #   near: a 24 m wrap patch of 5-blade tufts 12 cm apart on High (~350
 #         blades per m²), 3 segments, fading out at 8.5-11.5 m;
-#   far:  a 48 m patch of wider 3-blade, 2-segment tufts 34 cm apart that
+#   far:  a 64 m patch of wider 3-blade, 2-segment tufts 40 cm apart that
 #         is fully grown in before the near patch starts to fade (no density
-#         step at the handover) and fades out by 23.5 m.
+#         step at the handover) and fades out by 31 m, where the haze and
+#         the ground texture take over.
 # The mask (density, dryness, tall grass, trodden path) and the height map
 # are painted once from layout.gd: no grass in the paddy, courtyard, house,
 # pens, canal, pond or nursery bed, and none on the bund steps, where
@@ -17,7 +18,7 @@ const SHADER = preload("res://shaders/grass_lawn.gdshader")
 const MAP_RECT := Rect2(-40.0, -44.0, 80.0, 80.0)
 const RES := 256
 # [near grid, far grid] per quality level 0..2
-const GRIDS := [[130, 90], [165, 115], [200, 140]]
+const GRIDS := [[130, 110], [165, 135], [200, 160]]
 
 var shade_spots: Array = [] # [Vector3(x, z, radius)] under groves: thinner, drier grass
 var _near: MultiMeshInstance3D
@@ -30,7 +31,7 @@ func _ready() -> void:
 	var maps := _paint()
 	var nz := F.wind_noise()
 	_near = _patch(24.0, 3, 5, Vector2(8.5, 11.5), Vector2.ZERO, 0.0068, maps, nz)
-	_far = _patch(48.0, 2, 3, Vector2(19.0, 23.5), Vector2(6.0, 8.5), 0.014, maps, nz)
+	_far = _patch(64.0, 2, 3, Vector2(26.0, 31.0), Vector2(6.0, 8.5), 0.018, maps, nz)
 	set_quality(2)
 
 
@@ -176,15 +177,15 @@ func _paint() -> Array:
 			# pond: none inside the rim, reeds on it
 			var pdist := Vector2(x - L.POND.x, z - L.POND.z).length() - L.POND.r
 			dens *= smoothstep(0.45, 0.8, pdist)
-			tall = maxf(tall, (1.0 - smoothstep(0.6, 1.8, pdist)) * 0.8)
+			tall = maxf(tall, (1.0 - smoothstep(0.6, 1.8, pdist)) * 0.5) # low enough to show the stones
 			# trodden paths: yard to the field, yard to the pond and the nursery
 			var path := (1.0 - smoothstep(0.3, 0.8, absf(x - 0.5 * sin(z * 0.3)))) * float(z > -14.3 and z < -8.7)
 			path = maxf(path, _seg_path(x, z, Vector2(-6.0, -15.5), L.POND_EDGE, 0.6))
 			path = maxf(path, _seg_path(x, z, Vector2(6.0, -16.0), L.NURSERY + Vector2(-2.3, 0.0), 0.6))
 			dens *= 1.0 - 0.75 * path
 			var sh := shade[py * RES + px]
-			dens *= 1.0 - 0.6 * sh
-			var dryness := clampf(0.05 + 0.32 * (1.0 - n) * (1.0 - tall) + 0.35 * sh, 0.0, 1.0)
+			dens *= 1.0 - 0.35 * sh
+			var dryness := clampf(0.05 + 0.32 * (1.0 - n) * (1.0 - tall) + 0.2 * sh, 0.0, 1.0)
 			img.set_pixel(px, py, Color(clampf(dens, 0.0, 1.0), dryness, tall, path))
 	return [ImageTexture.create_from_image(img), ImageTexture.create_from_image(hmap)]
 

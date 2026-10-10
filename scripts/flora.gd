@@ -56,13 +56,13 @@ static func material(kind: String) -> ShaderMaterial:
 		"seedling": # nursery bed: soft, short, fluttering
 			m.set_shader_parameter("sway", 0.12)
 			m.set_shader_parameter("flex_sway", 0.02)
-			m.set_shader_parameter("translucency", 0.3)
+			m.set_shader_parameter("translucency", 0.18)
 			m.set_shader_parameter("rough", 0.6)
 			m.set_shader_parameter("keep_normal", true)
 		"blade": # rice and grass: colour from vertices/instances
 			m.set_shader_parameter("sway", 0.09)
 			m.set_shader_parameter("keep_normal", true)
-			m.set_shader_parameter("translucency", 0.25)
+			m.set_shader_parameter("translucency", 0.15)
 	_mats[kind] = m
 	return m
 
@@ -773,10 +773,10 @@ static func seedling_patch_mesh(n := 28, radius := 0.075) -> ArrayMesh:
 		var aa := rng.randf() * TAU
 		var root := Vector3(cos(aa) * r, 0.0, sin(aa) * r)
 		var hgt := rng.randf_range(0.15, 0.25)
-		var k := rng.randf_range(0.85, 1.12)
+		var k := rng.randf_range(0.85, 1.02)
 		var yellow := rng.randf()
 		# mạ: a deeper green than lawn grass, a few paler yellowish seedlings
-		var col := Color(0.28, 0.5, 0.12).lerp(Color(0.44, 0.6, 0.18), yellow * yellow * 0.7) * k
+		var col := Color(0.30, 0.46, 0.14).lerp(Color(0.46, 0.56, 0.22), yellow * yellow * 0.7) * k
 		var phi := rng.randf() * TAU
 		for j in rng.randi_range(3, 4):
 			var a := phi + PI * j + rng.randf_range(-0.6, 0.6)
@@ -874,7 +874,7 @@ static func grass(parent: Node3D, points: Array, mesh: Mesh, rng: RandomNumberGe
 	for i in points.size():
 		var s := rng.randf_range(0.7, 1.4)
 		mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * rng.randf_range(0.8, 1.3), s)), points[i]))
-		var c := Color(0.3, 0.45, 0.12).lerp(Color(0.45, 0.55, 0.18), rng.randf())
+		var c := Color(0.24, 0.40, 0.10).lerp(Color(0.38, 0.50, 0.16), rng.randf())
 		c = c.lerp(Color(0.62, 0.56, 0.3), rng.randf() * dry)
 		mm.set_instance_color(i, c)
 	var mmi := MultiMeshInstance3D.new()

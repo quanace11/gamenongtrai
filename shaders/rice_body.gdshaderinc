@@ -15,6 +15,8 @@ uniform sampler2D grain_tex : filter_linear_mipmap, repeat_disable;
 global uniform float wind_gust;
 global uniform vec2 wind_dir;
 global uniform vec3 player_pos;
+global uniform float wetness;
+global uniform float rain_amount;
 uniform sampler2D noise : filter_linear_mipmap, repeat_enable;
 uniform float stage = 0.45;          // 0 transplant .. 0.45 tillering .. 1 ripe
 uniform float ripe = 0.0;            // 0 green .. 1 golden
@@ -22,15 +24,16 @@ uniform float plant_height = 0.7;    // metres, scales the wind bend
 uniform float water_y = -100.0;      // world y of the paddy water (or far below)
 uniform float stubble = 0.0;         // 1: cut straw
 uniform float stress = 0.0;          // yellowing from pests and poor health
+uniform float aniso = 0.12;          // waxy streak; 0 on the 2-vertex lod-1/2 leaves
 
 uniform vec3 c_young : source_color = vec3(0.56, 0.70, 0.25);
-uniform vec3 c_lush : source_color = vec3(0.25, 0.47, 0.10);
+uniform vec3 c_lush : source_color = vec3(0.20, 0.40, 0.09);
 uniform vec3 c_sheath : source_color = vec3(0.66, 0.72, 0.44);
-uniform vec3 c_straw : source_color = vec3(0.76, 0.65, 0.38);
-uniform vec3 c_tip : source_color = vec3(0.55, 0.42, 0.23);
+uniform vec3 c_straw : source_color = vec3(0.80, 0.71, 0.46);
+uniform vec3 c_tip : source_color = vec3(0.62, 0.52, 0.34);
 uniform vec3 c_chlorotic : source_color = vec3(0.76, 0.72, 0.32);
 uniform vec3 c_grain_green : source_color = vec3(0.56, 0.64, 0.26);
-uniform vec3 c_grain_gold : source_color = vec3(0.80, 0.63, 0.30);
+uniform vec3 c_grain_gold : source_color = vec3(0.84, 0.70, 0.40);
 uniform vec3 c_mud_water : source_color = vec3(0.15, 0.13, 0.08);
 
 varying vec4 v_state;
@@ -76,9 +79,13 @@ void fragment() {
 	vec3 col;
 	if (organ > 0.75) {
 		col = mix(c_grain_green, c_grain_gold, smoothstep(0.1, 0.85, mat));
+		// flowering (trổ bông): pale cream-green spikelets with white anthers,
+		// so the fresh panicles stand out of the leaves
+		vec3 cream = mix(pow(vec3(0.70, 0.74, 0.48), vec3(2.2)), c_grain_green, 0.4);
+		col = mix(cream, col, smoothstep(0.02, 0.2, mat));
 		col *= 0.9 + 0.2 * fract(rnd * 3.7 + v_state.z);
-		// a few darker, rust-tinged grains
-		col = mix(col, col * vec3(0.8, 0.66, 0.5), smoothstep(0.72, 1.0, fract(rnd * 13.7 + rank * 3.1)) * mat);
+		// a few darker, rust-tinged grains (about 5 %)
+		col = mix(col, col * vec3(0.8, 0.66, 0.5), smoothstep(0.72, 1.0, fract(rnd * 13.7 + rank * 3.1)) * mat * 0.5);
 #ifndef PANICLE_PASS
 		// solid far panicles: match the average shade of the near grain
 		// ribbons (gaps and shaded husks) so the lod change is not a stripe
@@ -87,8 +94,11 @@ void fragment() {
 	} else {
 		col = mix(c_sheath, green, organ < 0.25 ? smoothstep(0.0, 0.25, t) : 0.15);
 		// senescence: lower leaves first, from the tip down
-		float sen = clamp(mat * (0.5 + 0.95 * rank) + (t - 0.55) * 0.9 * mat - 0.12, 0.0, 1.0);
-		col = mix(col, c_straw * (0.92 + 0.16 * rnd), smoothstep(0.12, 0.85, sen));
+		float sen = clamp(mat * (0.78 + 0.6 * rank) + (t - 0.55) * 0.6 * mat - 0.08, 0.0, 1.0);
+		// at full ripeness even the flag leaf is at least half straw: real
+		// ripe paddies read pale gold, not gold with green spikes
+		float senw = max(smoothstep(0.12, 0.85, sen), 0.55 * smoothstep(0.7, 0.9, mat));
+		col = mix(col, c_straw * (0.92 + 0.16 * rnd), senw);
 		// dry tips: transplant shock on seedlings, age on ripe rice
 		float tipdry = max(0.25 + 0.75 * sen, (1.0 - smoothstep(0.0, 0.12, stage)) * step(0.55, fract(rnd * 5.3)));
 		col = mix(col, c_tip, smoothstep(0.86, 1.0, t) * tipdry);
@@ -121,15 +131,16 @@ void fragment() {
 		float nv = dot(NORMAL, VIEW);
 		NORMAL = normalize(NORMAL + VIEW * max(0.0, 0.12 - nv));
 	}
-	ALBEDO = col;
+	// rain-soaked rice darkens instead of staying saturated
+	ALBEDO = col * mix(1.0, 0.8, max(wetness, rain_amount));
 	// husks are matte; waxy leaves get a soft streak along the blade
 	float grain = step(0.75, organ);
 	// (rougher than a glossy leaf: thin blades at grazing sun otherwise flash
 	// silver-white; real rice has a dull waxy sheen)
-	ROUGHNESS = mix(mix(0.62, 0.72, max(mat, stubble)), 0.8, grain);
-	SPECULAR = mix(0.3, 0.2, grain);
-	ANISOTROPY = 0.12 * (1.0 - under) * (1.0 - grain);
-	BACKLIGHT = col * mix(0.38, 0.26, mat) * (1.0 - under);
+	ROUGHNESS = mix(mix(0.72, 0.8, max(mat, stubble)), 0.85, grain);
+	SPECULAR = mix(0.22, 0.15, grain);
+	ANISOTROPY = aniso * (1.0 - under) * (1.0 - grain);
+	BACKLIGHT = col * mix(0.22, 0.2, mat) * (1.0 - under);
 	AO = mix(0.35, 1.0, smoothstep(0.0, 0.75, COLOR.a));
 	AO_LIGHT_AFFECT = 0.5;
 }

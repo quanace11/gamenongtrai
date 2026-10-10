@@ -1607,7 +1607,7 @@ func _run_tour() -> void:
 	field.growth_day = 5
 	field.rice_dirty = true
 	await _look_at(-8.3, 2.0, -4.0, 1.0, -0.2)
-	await _set_time(9.5)
+	await _set_time(7.5) # low side sun: shadow structure inside the canopy
 	await _shot("tour-17-rice-eye-heading")
 	field.growth_day = 8
 	field.rice_dirty = true
