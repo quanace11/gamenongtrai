@@ -16,6 +16,7 @@ uniform sampler2D storm_tex : filter_linear, repeat_enable;
 uniform float daylight = 1.0; // 0 night .. 1 day
 uniform float morning = 0.0; // 1 = misty morning sky, 0 = hazy day sky
 uniform float dusk = 0.0; // sunrise / sunset glow
+uniform float gold = 0.0; // golden hour: the low sun warms the whole hazy sky
 uniform float storm = 0.0;
 uniform float flash = 0.0; // lightning
 uniform float drift = 0.0; // tiny cloud wobble, in turns
@@ -79,6 +80,7 @@ void sky() {
 	float low = pow(1.0 - clamp(EYEDIR.y, 0.0, 1.0), 6.0);
 	day = mix(day, haze_col * max(l, 0.85 * day_gain), low * 0.4 * humid);
 
+	day *= mix(vec3(1.0), vec3(1.1, 0.95, 0.78), gold);
 	vec3 col = mix(night, day, daylight);
 	col = mix(col, sunset * mix(0.4, 1.0, daylight), dusk);
 	col = mix(col, grey * (0.25 + 0.55 * daylight), storm);

@@ -1195,7 +1195,8 @@ func _update_sky() -> float:
 	var fog_c := Color(0.08, 0.1, 0.15).lerp(Color(0.80, 0.84, 0.87), daylight)
 	# Golden hour: from mid-afternoon the haze itself turns warm.
 	var gold := (1.0 - smoothstep(0.12, 0.45, e)) * smoothstep(-0.02, 0.04, elev)
-	fog_c = fog_c.lerp(Color(0.98, 0.8, 0.6), maxf(dusk * 0.7, gold * 0.45)).lerp(Color(0.45, 0.48, 0.5), s * 0.85)
+	fog_c = fog_c.lerp(Color(0.98, 0.8, 0.6), maxf(dusk * 0.7, gold * 0.6)).lerp(Color(0.45, 0.48, 0.5), s * 0.85)
+	sky_mat.set_shader_parameter("gold", gold * (1.0 - s))
 	if flash > 0.0:
 		fog_c = fog_c.lerp(Color("dde6ff"), flash)
 	env.fog_light_color = fog_c
