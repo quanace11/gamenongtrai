@@ -169,131 +169,356 @@ static func _plastic(color: Color) -> StandardMaterial3D:
 
 
 # ---------------------------------------------------------------- ground
-static func _ground(root: Node3D, h: Dictionary) -> void:
+# Grid coordinates from lo to hi: `step` apart, `fine` apart inside the
+# given [a, b] bands (bund slopes, canal banks, the pond), always hitting
+# the listed `must` values exactly.
+static func _coords(lo: float, hi: float, step: float, bands: Array, must := []) -> PackedFloat32Array:
+	var out := []
+	var c := lo
+	while c < hi:
+		out.append(c)
+		var st := step
+		for bd in bands:
+			if c >= bd[0] - 0.001 and c < bd[1]:
+				st = minf(st, bd[2])
+		c += st
+	out.append(hi)
+	for m in must:
+		out.append(m)
+	out.sort()
+	var res := PackedFloat32Array()
+	for v in out:
+		if res.is_empty() or v - res[res.size() - 1] > 0.02:
+			res.append(v)
+	return res
+
+
+# Height-field mesh on a tensor grid. `height` gives y for (x, z); cells
+# for which `skip` returns true are left out. Normals come from the
+# neighbouring heights, so slopes shade smoothly on the uneven grid.
+static func _grid_mesh(xs: PackedFloat32Array, zs: PackedFloat32Array, height: Callable, skip: Callable) -> ArrayMesh:
+	var nx := xs.size()
+	var nz := zs.size()
+	var hs := PackedFloat32Array()
+	hs.resize(nx * nz)
+	var v := PackedVector3Array()
+	v.resize(nx * nz)
+	for j in nz:
+		for i in nx:
+			var y: float = height.call(xs[i], zs[j])
+			hs[j * nx + i] = y
+			v[j * nx + i] = Vector3(xs[i], y, zs[j])
+	var nrm := PackedVector3Array()
+	nrm.resize(nx * nz)
+	for j in nz:
+		var j0 := maxi(j - 1, 0)
+		var j1 := mini(j + 1, nz - 1)
+		for i in nx:
+			var i0 := maxi(i - 1, 0)
+			var i1 := mini(i + 1, nx - 1)
+			var dx := (hs[j * nx + i1] - hs[j * nx + i0]) / (xs[i1] - xs[i0])
+			var dz := (hs[j1 * nx + i] - hs[j0 * nx + i]) / (zs[j1] - zs[j0])
+			nrm[j * nx + i] = Vector3(-dx, 1.0, -dz).normalized()
+	var idx := PackedInt32Array()
+	for j in nz - 1:
+		for i in nx - 1:
+			if skip.call((xs[i] + xs[i + 1]) * 0.5, (zs[j] + zs[j + 1]) * 0.5):
+				continue
+			var a := j * nx + i
+			idx.append_array([a, a + 1, a + nx, a + 1, a + nx + 1, a + nx])
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = v
+	arrays[Mesh.ARRAY_NORMAL] = nrm
+	arrays[Mesh.ARRAY_INDEX] = idx
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return m
+
+
+static func _ground_material(relief: bool) -> ShaderMaterial:
 	var gm := ShaderMaterial.new()
 	gm.shader = GROUND
-	gm.set_shader_parameter("grass_alb", A.tex("leafy_grass", "diff"))
-	gm.set_shader_parameter("grass_nor", A.tex("leafy_grass", "nor"))
-	gm.set_shader_parameter("grass_arm", A.tex("leafy_grass", "arm"))
-	gm.set_shader_parameter("path_alb", A.tex("grass_path_2", "diff"))
-	gm.set_shader_parameter("path_nor", A.tex("grass_path_2", "nor"))
+	gm.set_shader_parameter("grass_alb", A.tex("sparse_grass", "diff"))
+	gm.set_shader_parameter("grass_nor", A.tex("sparse_grass", "nor"))
+	gm.set_shader_parameter("grass_arm", A.tex("sparse_grass", "arm"))
+	gm.set_shader_parameter("earth_alb", A.tex("grass_path_3", "diff"))
+	gm.set_shader_parameter("earth_nor", A.tex("grass_path_3", "nor"))
+	gm.set_shader_parameter("earth_arm", A.tex("grass_path_3", "arm"))
 	gm.set_shader_parameter("mud_alb", A.tex("brown_mud_03", "diff"))
-	var S := 220.0
+	gm.set_shader_parameter("mud_nor", A.tex("brown_mud_03", "nor"))
+	gm.set_shader_parameter("mud_arm", A.tex("brown_mud_03", "arm"))
+	gm.set_shader_parameter("relief", relief)
+	gm.set_shader_parameter("near_rect", Vector4(NEAR.x0, NEAR.z0, NEAR.x1, NEAR.z1))
+	gm.set_shader_parameter("field_rect", Vector4(L.FIELD.x0, L.FIELD.z0, L.FIELD.x1, L.FIELD.z1))
+	gm.set_shader_parameter("court_rect", Vector4(L.COURT.x0, L.COURT.z0, L.COURT.x1, L.COURT.z1))
+	gm.set_shader_parameter("canal", Vector2((L.CANAL.x0 + L.CANAL.x1) * 0.5, (L.CANAL.x1 - L.CANAL.x0) * 0.5))
+	gm.set_shader_parameter("pond", Vector3(L.POND.x, L.POND.z, L.POND.r))
+	gm.set_shader_parameter("wallow", Vector3(L.BUFFALO.x, L.BUFFALO.y, 1.6))
+	# Lối mòn: the paths people actually walk every day.
+	var segs := []
+	var widths := []
+	for path in PATHS:
+		for i in path[1].size() - 1:
+			var a: Vector2 = path[1][i]
+			var b: Vector2 = path[1][i + 1]
+			segs.append(Vector4(a.x, a.y, b.x, b.y))
+			widths.append(path[0])
+	gm.set_shader_parameter("paths", segs)
+	gm.set_shader_parameter("path_w", PackedFloat32Array(widths))
+	gm.set_shader_parameter("path_count", segs.size())
+	return gm
+
+
+# [width, points] of each trodden path.
+const PATHS := [
+	[1.0, [Vector2(0, -14.2), Vector2(0.4, -11.6), Vector2(-0.3, -9.0)]], # sân -> ruộng
+	[0.9, [Vector2(-6.2, -16.5), Vector2(-9.0, -14.2), Vector2(-11.0, -13.0), Vector2(-13.2, -12.4), Vector2(-15.6, -10.6)]], # sân -> cầu -> ao
+	[0.9, [Vector2(-6.2, -19.6), Vector2(-9.4, -21.4), Vector2(-12.4, -22.6)]], # sân -> chuồng lợn
+	[0.7, [Vector2(-9.4, -21.4), Vector2(-8.6, -23.6)]], # -> bếp
+	[0.9, [Vector2(6.2, -17.0), Vector2(8.6, -16.4), Vector2(10.8, -16.2)]], # -> vạt mạ
+	[0.8, [Vector2(6.2, -15.0), Vector2(9.9, -11.5), Vector2(10.2, -4.0), Vector2(10.8, 3.0), Vector2(11.0, 7.0), Vector2(12.0, 8.0)]], # -> chuồng vịt
+	[0.8, [Vector2(-1.2, 9.0), Vector2(-2.6, 11.6)]], # -> chỗ trâu
+]
+const NEAR := {"x0": -40.0, "x1": 40.0, "z0": -44.0, "z1": 36.0}
+const FAR := 700.0
+
+
+static func _ground(root: Node3D, h: Dictionary) -> void:
+	var t0 := Time.get_ticks_msec()
+	var near_m := _ground_material(false)
+	var far_m := _ground_material(true)
+	var c0: float = L.CANAL.x0
+	var c1: float = L.CANAL.x1
+	var fx0: float = L.FIELD.x0
+	var fx1: float = L.FIELD.x1
 	var b: float = L.FIELD.bund
-	var fx0: float = L.FIELD.x0 - b
-	var fx1: float = L.FIELD.x1 + b
-	# Rectangles of ground around the sunken field and the canal strip.
-	var rects := [
-		[-S, L.CANAL.x0, -S, S],
-		[L.CANAL.x1, fx0, -S, S],
-		[fx0, fx1, -S, fx0],
-		[fx0, fx1, fx1, S],
-		[fx1, S, -S, S],
-	]
-	for r in rects:
-		var p := PlaneMesh.new()
-		p.size = Vector2(r[1] - r[0], r[3] - r[2])
-		var mi := MeshInstance3D.new()
-		mi.mesh = p
-		mi.material_override = gm
-		mi.position = Vector3((r[0] + r[1]) / 2.0, 0, (r[2] + r[3]) / 2.0)
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		root.add_child(mi)
+	# Near terrain: 0.4 m grid, 0.1 m across bund slopes, canal banks and notches.
+	var bx := [[fx0 - b - 0.6, fx0 + 0.4, 0.1], [fx1 - 0.4, fx1 + b + 0.6, 0.1], [c0 - 0.6, c1 + 0.6, 0.12],
+		[L.POND.x - 7.0, L.POND.x + 7.0, 0.22]]
+	var bz := [[fx0 - b - 0.6, fx0 + 0.4, 0.1], [fx1 - 0.4, fx1 + b + 0.6, 0.1], [L.GATE.y - 0.7, L.GATE.y + 0.7, 0.1],
+		[L.DRAIN.y - 0.7, L.DRAIN.y + 0.7, 0.1], [L.POND.z - 7.0, L.POND.z + 7.0, 0.22]]
+	var xs := _coords(NEAR.x0, NEAR.x1, 0.4, bx, [c0 - 2.0, c1 + 2.0])
+	var zs := _coords(NEAR.z0, NEAR.z1, 0.4, bz)
+	var hole := func(x: float, z: float) -> bool: return L.in_field(x, z, -0.3)
+	var near := _grid_mesh(xs, zs, Callable(L, "terrain_y"), hole)
+	_terrain_node(root, near, near_m)
+	# The canal runs on past the near terrain, north and south.
+	var sx := PackedFloat32Array()
+	for x in xs:
+		if x >= c0 - 2.0 - 0.001 and x <= c1 + 2.0 + 0.001:
+			sx.append(x)
+	var never := func(_x: float, _z: float) -> bool: return false
+	var canal_y := func(x: float, z: float) -> float: return L.terrain_y(x, z)
+	_terrain_node(root, _grid_mesh(sx, _coords(NEAR.z1, 320.0, 1.0, []), canal_y, never), near_m)
+	_terrain_node(root, _grid_mesh(sx, _coords(-320.0, NEAR.z0, 1.0, []), canal_y, never), near_m)
+	# Far ground to the horizon: 1.5 m cells near the farm, growing outward.
+	var fxs := _far_coords([NEAR.x0, NEAR.x1, c0 - 2.0, c1 + 2.0])
+	var fzs := _far_coords([NEAR.z0, NEAR.z1, -320.0, 320.0])
+	var far_hole := func(x: float, z: float) -> bool:
+		if x > NEAR.x0 and x < NEAR.x1 and z > NEAR.z0 and z < NEAR.z1:
+			return true
+		return x > c0 - 2.0 and x < c1 + 2.0 and z > -320.0 and z < 320.0
+	var flat := func(_x: float, _z: float) -> float: return 0.0
+	_terrain_node(root, _grid_mesh(fxs, fzs, flat, far_hole), far_m).extra_cull_margin = 1.0
+	print("terrain built in %d ms (%d near verts)" % [Time.get_ticks_msec() - t0, xs.size() * zs.size()])
 
-	# Bờ ruộng: packed earth with grass on top
-	var bund_m := A.pbr("grass_path_2", 1.6, true, Color(0.8, 0.95, 0.65))
-	var size := fx1 - fx0
-	var hgt := 0.55
-	var yc: float = L.FIELD.bund_top - hgt / 2.0
-	mbox(root, Vector3(size, hgt, b), bund_m, Vector3(0, yc, L.FIELD.z0 - b / 2.0), Vector3.ZERO, false)
-	mbox(root, Vector3(size, hgt, b), bund_m, Vector3(0, yc, L.FIELD.z1 + b / 2.0), Vector3.ZERO, false)
-	mbox(root, Vector3(b, hgt, size), bund_m, Vector3(L.FIELD.x0 - b / 2.0, yc, 0), Vector3.ZERO, false)
-	mbox(root, Vector3(b, hgt, size), bund_m, Vector3(L.FIELD.x1 + b / 2.0, yc, 0), Vector3.ZERO, false)
-
-	# Mương: muddy bed, earth banks, murky water
-	var cx: float = (L.CANAL.x0 + L.CANAL.x1) / 2.0
-	mbox(root, Vector3(2, 0.1, 2 * S), A.pbr("brown_mud_03", 2.0), Vector3(cx, -0.95, 0), Vector3.ZERO, false)
-	var bank := A.pbr("dirt", 2.0)
-	mbox(root, Vector3(0.1, 0.9, 2 * S), bank, Vector3(L.CANAL.x0, -0.45, 0), Vector3.ZERO, false)
-	mbox(root, Vector3(0.1, 0.9, 2 * S), bank, Vector3(L.CANAL.x1, -0.45, 0), Vector3.ZERO, false)
+	# Mương: murky water between the sloped banks.
+	var cx: float = (c0 + c1) / 2.0
 	var water := PlaneMesh.new()
-	water.size = Vector2(2, 2 * S)
+	water.size = Vector2(c1 - c0 + 0.9, 640.0)
 	var cw := MeshInstance3D.new()
 	cw.mesh = water
 	cw.material_override = water_material("canal")
 	cw.position = Vector3(cx, -0.3, 0)
+	cw.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(cw)
 	h.canal_water = cw
-	# Rãnh dẫn nước từ mương tới cửa cống, và rãnh xả bờ đông
-	var mud := A.pbr("brown_mud_03", 1.5)
-	mbox(root, Vector3(1.2, 0.05, 0.9), mud, Vector3(-9.4, 0.0, 0), Vector3.ZERO, false)
-	mbox(root, Vector3(0.8, 0.05, 0.7), mud, Vector3(9.2, 0.0, 4), Vector3.ZERO, false)
-	for c in [[Vector2(1.2, 0.9), Vector3(-9.4, 0.04, 0)], [Vector2(0.8, 0.7), Vector3(9.2, 0.04, 4)]]:
-		var wp := PlaneMesh.new()
-		wp.size = c[0]
-		var wi := MeshInstance3D.new()
-		wi.mesh = wp
-		wi.material_override = water_material("canal")
-		wi.position = c[1]
-		root.add_child(wi)
+	# Nước trong rãnh dẫn tới cửa cống
+	var inlet := PlaneMesh.new()
+	inlet.size = Vector2(2.2, 0.7)
+	var iw := MeshInstance3D.new()
+	iw.mesh = inlet
+	iw.material_override = water_material("canal")
+	iw.position = Vector3(L.GATE.x - 1.2, -0.13, L.GATE.y)
+	iw.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(iw)
+	_bridge(root)
 
-	# Ao với bèo tây: muddy bank, dark water, hyacinth rosettes with lilac flowers
-	var rim := TorusMesh.new()
-	rim.inner_radius = L.POND.r - 0.3
-	rim.outer_radius = L.POND.r + 0.5
-	rim.rings = 48
-	var rmi := MeshInstance3D.new()
-	rmi.mesh = rim
-	rmi.material_override = A.pbr("brown_mud_03", 1.5)
-	rmi.position = Vector3(L.POND.x, -0.02, L.POND.z)
-	rmi.scale = Vector3(1, 0.12, 1)
-	root.add_child(rmi)
-	var pond := CylinderMesh.new()
-	pond.top_radius = L.POND.r
-	pond.bottom_radius = L.POND.r
-	pond.height = 0.04
-	pond.radial_segments = 48
+	# Ao: the water plane is larger than the shore; the bank hides its edge.
+	var pond := PlaneMesh.new()
+	pond.size = Vector2(L.POND.r * 2.6, L.POND.r * 2.6)
 	var pmi := MeshInstance3D.new()
 	pmi.mesh = pond
 	pmi.material_override = water_material("pond")
-	pmi.position = Vector3(L.POND.x, 0.02, L.POND.z)
+	pmi.position = Vector3(L.POND.x, L.POND_WATER, L.POND.z)
+	pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.add_child(pmi)
-	var leaf_m := StandardMaterial3D.new()
-	leaf_m.albedo_color = Color(0.22, 0.48, 0.16)
-	leaf_m.roughness = 0.3
-	var flower_m := StandardMaterial3D.new()
-	flower_m.albedo_color = Color(0.72, 0.6, 0.9)
-	flower_m.roughness = 0.6
-	var leaf := SphereMesh.new()
-	leaf.radius = 0.11
-	leaf.height = 0.08
-	leaf.radial_segments = 10
-	leaf.rings = 4
+	_hyacinths(root)
+
+
+static func _terrain_node(root: Node3D, mesh: ArrayMesh, m: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mi)
+	return mi
+
+
+static func _far_coords(must: Array) -> PackedFloat32Array:
+	var out := []
+	var c := -FAR
+	while c < FAR:
+		out.append(c)
+		c += maxf(1.5, (absf(c) - 110.0) * 0.09)
+	out.append(FAR)
+	out.append_array(must)
+	out.sort()
+	var res := PackedFloat32Array()
+	for v in out:
+		if res.is_empty() or v - res[res.size() - 1] > 0.3:
+			res.append(v)
+		elif v in must:
+			res[res.size() - 1] = v
+	return res
+
+
+# Cầu tre: two bamboo poles and split-bamboo slats across the canal.
+static func _bridge(root: Node3D) -> void:
+	var z: float = L.BRIDGE.z
+	var x0: float = L.CANAL.x0 - 0.9
+	var x1: float = L.CANAL.x1 + 0.9
+	var pole := StandardMaterial3D.new()
+	pole.albedo_color = Color(0.55, 0.5, 0.36)
+	pole.roughness = 0.55
+	for s in [-0.3, 0.3]:
+		var c := mcyl(root, 0.06, 0.06, x1 - x0, pole, Vector3((x0 + x1) / 2.0, L.BRIDGE.y - 0.06, z + s), 8)
+		c.rotation.z = PI / 2
+	var slat := A.pbr("weathered_planks", 0.8, true, Color(0.75, 0.68, 0.55))
+	var n := 22
+	for i in n:
+		var x := lerpf(x0 + 0.1, x1 - 0.1, float(i) / (n - 1))
+		mbox(root, Vector3(0.12, 0.03, 0.85), slat, Vector3(x, L.BRIDGE.y + 0.01, z + randf_range(-0.04, 0.04)), Vector3(0, randf_range(-0.06, 0.06), 0))
+	for x in [L.CANAL.x0 + 0.3, L.CANAL.x1 - 0.3]:
+		for s in [-0.3, 0.3]:
+			mcyl(root, 0.045, 0.05, 1.1, pole, Vector3(x, -0.45, z + s), 7)
+
+
+# Bèo tây (water hyacinth): rosettes of glossy, cupped leaves on swollen
+# stalks, floating in loose rafts, a few with a pale lilac flower spike.
+static func _hyacinths(root: Node3D) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 42
-	for i in 34:
-		var a := rng.randf() * TAU
-		var rr := sqrt(rng.randf()) * (L.POND.r - 0.7)
-		var c := Vector3(L.POND.x + cos(a) * rr, 0.06, L.POND.z + sin(a) * rr)
-		for k in 7:
-			var la := k * TAU / 7.0 + rng.randf() * 0.4
-			var lm := MeshInstance3D.new()
-			lm.mesh = leaf
-			lm.material_override = leaf_m
-			lm.position = c + Vector3(cos(la) * 0.13, 0.05 + rng.randf() * 0.06, sin(la) * 0.13)
-			lm.rotation = Vector3(0.5, -la, 0)
-			lm.scale = Vector3(1, 1, 1.4)
-			root.add_child(lm)
-		if rng.randf() < 0.45:
-			for k in 5:
-				var fm := MeshInstance3D.new()
-				var fs := SphereMesh.new()
-				fs.radius = 0.035
-				fs.height = 0.05
-				fm.mesh = fs
-				fm.material_override = flower_m
-				fm.position = c + Vector3(rng.randf_range(-0.03, 0.03), 0.22 + k * 0.035, rng.randf_range(-0.03, 0.03))
-				root.add_child(fm)
+	var leaf := _hyacinth_leaf()
+	var stalk := _hyacinth_stalk()
+	var leaves := []
+	var stalks := []
+	var flowers := []
+	var rafts := [Vector2(-1.8, 1.2), Vector2(1.5, -1.6), Vector2(2.2, 1.6), Vector2(-2.4, -1.4)]
+	for raft in rafts:
+		var count := rng.randi_range(9, 14)
+		for i in count:
+			var c: Vector2 = Vector2(L.POND.x, L.POND.z) + raft + Vector2(rng.randfn(0.0, 0.55), rng.randfn(0.0, 0.55))
+			if not L.in_pond(c.x, c.y) or Vector2(c.x - L.POND.x, c.y - L.POND.z).length() > L.pond_r(c.x, c.y) - 0.35:
+				continue
+			var base := Vector3(c.x, L.POND_WATER + 0.01, c.y)
+			var nl := rng.randi_range(6, 9)
+			var s := rng.randf_range(0.8, 1.25)
+			for k in nl:
+				var a := k * TAU / nl + rng.randf_range(-0.25, 0.25)
+				var tilt := rng.randf_range(0.6, 1.0)
+				var b := Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, -tilt * 0.5)
+				stalks.append(Transform3D(b.scaled(Vector3.ONE * s), base))
+				leaves.append(Transform3D((b * Basis(Vector3.RIGHT, tilt * 0.4)).scaled(Vector3.ONE * s), base + b * Vector3(0, 0.09, 0.06) * s))
+			if rng.randf() < 0.3:
+				flowers.append(base)
+	_multi(root, leaf, leaves, _leaf_material(Color(0.13, 0.3, 0.06), 0.35))
+	_multi(root, stalk, stalks, _leaf_material(Color(0.22, 0.36, 0.1), 0.45))
+	# Flower spikes: a stem with small lilac florets.
+	var stem_m := _leaf_material(Color(0.25, 0.38, 0.12), 0.5)
+	var petal := _leaf_material(Color(0.62, 0.55, 0.85), 0.6)
+	var fl := SphereMesh.new()
+	fl.radius = 0.022
+	fl.height = 0.03
+	fl.radial_segments = 6
+	fl.rings = 3
+	var florets := []
+	for fp in flowers:
+		mcyl(root, 0.006, 0.008, 0.22, stem_m, fp + Vector3(0, 0.12, 0), 5)
+		for k in 9:
+			var a := k * 2.4
+			florets.append(Transform3D(Basis(Vector3.UP, a), fp + Vector3(cos(a) * 0.025, 0.17 + k * 0.012, sin(a) * 0.025)))
+	_multi(root, fl, florets, petal)
+
+
+static func _leaf_material(c: Color, rough: float) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.roughness = rough
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.backlight_enabled = true
+	m.backlight = Color(0.25, 0.35, 0.1)
+	return m
+
+
+static func _multi(root: Node3D, mesh: Mesh, xforms: Array, m: Material, shadow := true) -> MultiMeshInstance3D:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = mesh
+	mm.instance_count = xforms.size()
+	for i in xforms.size():
+		mm.set_instance_transform(i, xforms[i])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = m
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mmi)
+	return mmi
+
+
+# A rounded, cupped hyacinth blade (about 12 cm), base at the origin, along +z.
+static func _hyacinth_leaf() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rows := 6
+	var cols := 6
+	for j in rows:
+		for i in cols:
+			for q in [[0, 0], [1, 0], [0, 1], [1, 0], [1, 1], [0, 1]]:
+				var u := float(i + q[0]) / cols * 2.0 - 1.0
+				var v := float(j + q[1]) / rows
+				# Kidney-shaped outline, wider than long, cupped upward.
+				var w := sin(v * PI * 0.92 + 0.15) * 0.07
+				var x := u * w
+				var z := v * 0.11
+				var y := u * u * 0.025 + v * v * 0.02
+				st.set_normal(Vector3(-u * 0.5, 1.0, -v * 0.3).normalized())
+				st.add_vertex(Vector3(x, y, z))
+	return st.commit()
+
+
+# The swollen, spongy leaf stalk that keeps the plant afloat.
+static func _hyacinth_stalk() -> ArrayMesh:
+	var c := CapsuleMesh.new()
+	c.radius = 0.022
+	c.height = 0.11
+	c.radial_segments = 8
+	c.rings = 2
+	var arr := c.get_mesh_arrays()
+	var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+	for i in v.size():
+		# lay it along +z, lift it to sit on the water
+		v[i] = Vector3(v[i].x, v[i].z * 0.8 + 0.02, v[i].y + 0.04)
+	arr[Mesh.ARRAY_VERTEX] = v
+	var n: PackedVector3Array = arr[Mesh.ARRAY_NORMAL]
+	for i in n.size():
+		n[i] = Vector3(n[i].x, n[i].z, n[i].y)
+	arr[Mesh.ARRAY_NORMAL] = n
+	arr[Mesh.ARRAY_TANGENT] = null
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return m
 
 
 # ---------------------------------------------------------------- house & courtyard
@@ -392,7 +617,8 @@ static func _props(root: Node3D, h: Dictionary) -> void:
 	mbox(gate, Vector3(0.15, 0.12, 1.25), wood, Vector3(0, 0.7, 0))
 	h.gate = mbox(gate, Vector3(0.08, 0.6, 0.95), wood, Vector3(0, -0.05, 0))
 	# Ụ đất bịt rãnh xả bờ đông
-	h.drain_plug = mbox(root, Vector3(0.85, 0.45, 0.7), A.pbr("grass_path_2", 1.0), Vector3(L.DRAIN.x, -0.08, L.DRAIN.y), Vector3.ZERO, false)
+	h.drain_plug = sphere(root, 0.5, Color.WHITE, Vector3(L.DRAIN.x + 0.3, -0.02, L.DRAIN.y), Vector3(1.0, 0.36, 0.78))
+	h.drain_plug.material_override = A.pbr("brown_mud_03", 1.0)
 
 	# Cọc tre bẫy ốc + ổ trứng hồng
 	h.eggs = []
