@@ -25,27 +25,82 @@ func setup(audio_node: Node, n := 10) -> void:
 		})
 
 
-# Vịt cỏ: mostly mottled brown, a few white, with orange bills and feet.
+# Vịt cỏ: small field ducks, mostly mottled brown with a darker back and
+# head and a pale eye stripe, a few white; orange-yellow bills and feet.
+# Bodies are lofted once per colour variant and shared by the flock.
+static var _meshes := {}
+
+
 func _build_duck(node: Node3D, i: int) -> void:
 	var white := i % 4 == 0
+	var key := "white" if white else "brown%d" % (i % 3)
+	if not _meshes.has(key):
+		_meshes[key] = _duck_meshes(white, i % 3)
+	var parts: Array = _meshes[key]
+	for k in parts.size():
+		var mi := MeshInstance3D.new()
+		mi.mesh = parts[k][0]
+		mi.material_override = parts[k][1]
+		node.add_child(mi)
+
+
+func _duck_meshes(white: bool, v: int) -> Array:
 	var feather := StandardMaterial3D.new()
-	feather.albedo_color = Color("ece6d6") if white else Color("7a5a3a").lerp(Color("9a7a52"), randf())
+	feather.vertex_color_use_as_albedo = true
+	feather.vertex_color_is_srgb = true
 	feather.roughness = 0.85
-	var dark := StandardMaterial3D.new()
-	dark.albedo_color = Color("ece6d6") if white else Color("3a3a2c")
-	dark.roughness = 0.6
 	var bill := StandardMaterial3D.new()
-	bill.albedo_color = Color("e8a23a") if white else Color("c8a040")
-	bill.roughness = 0.5
-	W.sphere(node, 0.18, Color.WHITE, Vector3(0, 0.18, 0), Vector3(0.9, 0.75, 1.5)).material_override = feather
-	W.sphere(node, 0.06, Color.WHITE, Vector3(0, 0.27, -0.27), Vector3(1, 0.7, 1.6)).material_override = feather
-	var neck := W.cyl(node, 0.045, 0.06, 0.18, Color.WHITE, Vector3(0, 0.33, 0.2), 8)
-	neck.rotation.x = 0.4
-	neck.material_override = feather
-	W.sphere(node, 0.085, Color.WHITE, Vector3(0, 0.43, 0.25), Vector3(0.9, 0.95, 1.15)).material_override = dark
-	W.box(node, Vector3(0.06, 0.025, 0.11), Color.WHITE, Vector3(0, 0.41, 0.36)).material_override = bill
-	for s in [-1, 1]:
-		W.box(node, Vector3(0.05, 0.08, 0.04), Color.WHITE, Vector3(s * 0.06, 0.04, 0.02)).material_override = bill
+	bill.albedo_color = Color("e2a23c") if white else Color("b89a4a")
+	bill.roughness = 0.45
+	var feet := StandardMaterial3D.new()
+	feet.albedo_color = Color("e08a2c") if white else Color("b07a3a")
+	feet.roughness = 0.6
+	var n := FastNoiseLite.new()
+	n.seed = v * 31
+	n.frequency = 45.0
+	var base := Color("6e5236").lerp(Color("8c6a44"), v * 0.4)
+	var paint := func(p: Vector3) -> Color:
+		if white:
+			return Color("e6e1d4").darkened(0.06 * n.get_noise_3dv(p))
+		# Mottled breast and flanks, darker back and wings, brown-black head.
+		var c := base.lerp(Color("a68862"), smoothstep(0.2, 0.12, p.y) * 0.6)
+		c = c.darkened(0.25 * maxf(0.0, n.get_noise_3dv(p)) + 0.15 * smoothstep(0.24, 0.29, p.y))
+		if p.y > 0.34:
+			c = Color("3e3020")
+			if absf(p.y - 0.41) < 0.008 and p.z > 0.2:
+				c = Color("b8a07a") # eye stripe
+		return c
+	var out := []
+	out.append([W.loft([
+		[Vector3(0, 0.255, -0.24), 0.012, 0.01],
+		[Vector3(0, 0.225, -0.19), 0.06, 0.035],
+		[Vector3(0, 0.2, -0.12), 0.11, 0.085],
+		[Vector3(0, 0.185, -0.02), 0.13, 0.11],
+		[Vector3(0, 0.19, 0.07), 0.125, 0.11],
+		[Vector3(0, 0.215, 0.14), 0.095, 0.09],
+		[Vector3(0, 0.255, 0.18), 0.06, 0.06],
+	], 14, paint, Vector3(1, 0, 0)), feather])
+	out.append([W.loft([
+		[Vector3(0, 0.26, 0.16), 0.045, 0.045],
+		[Vector3(0, 0.31, 0.19), 0.033, 0.035],
+		[Vector3(0, 0.36, 0.205), 0.032, 0.033],
+		[Vector3(0, 0.395, 0.215), 0.042, 0.04],
+		[Vector3(0, 0.41, 0.245), 0.045, 0.042],
+		[Vector3(0, 0.405, 0.28), 0.032, 0.03],
+	], 12, paint, Vector3(1, 0, 0)), feather])
+	out.append([W.loft([
+		[Vector3(0, 0.398, 0.28), 0.024, 0.014],
+		[Vector3(0, 0.392, 0.31), 0.022, 0.009],
+		[Vector3(0, 0.388, 0.335), 0.019, 0.006],
+	], 8, func(_p: Vector3) -> Color: return Color.WHITE, Vector3(1, 0, 0)), bill])
+	for s in [-1.0, 1.0]:
+		out.append([W.loft([
+			[Vector3(s * 0.05, 0.13, 0.0), 0.012, 0.012],
+			[Vector3(s * 0.055, 0.05, 0.01), 0.009, 0.009],
+			[Vector3(s * 0.055, 0.008, 0.04), 0.03, 0.004],
+			[Vector3(s * 0.055, 0.006, 0.075), 0.035, 0.003],
+		], 6, func(_p: Vector3) -> Color: return Color.WHITE, Vector3(1, 0, 0)), feet])
+	return out
 
 
 func whistle() -> void:
@@ -118,7 +173,9 @@ func step(dt: float, player: Vector3, fwd: Vector3, pole_active: bool, pen_open:
 		d.pos = pos
 		d.vel = vel
 		var gy := L.ground_y(pos.x, pos.z)
-		if gy < -0.2:
+		if L.in_pond(pos.x, pos.z):
+			gy = maxf(gy, L.POND_WATER - 0.06) # swimming in the pond
+		elif gy < -0.2:
 			gy = -0.3 # swimming in the canal
 		var node: Node3D = d.node
 		node.position = Vector3(pos.x, gy + sin(time * 6.0 + d.wander) * 0.015, pos.z)

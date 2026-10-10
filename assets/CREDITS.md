@@ -55,3 +55,24 @@ Texture ở độ phân giải 1k (albedo, normal OpenGL, ARM). Texture của m�
 ## Tự làm bằng code
 
 Tre, chuối, cau, dừa, cỏ, khóm lúa, trâu, lợn, vịt, núi đá vôi, nước và mặt ruộng xa được dựng bằng GDScript và shader trong `scripts/flora.gd`, `scripts/world.gd` và `shaders/`, vì thư viện CC0 chưa có các mẫu mang dáng làng quê Việt Nam. Âm thanh vẫn được tổng hợp bằng code (`scripts/audio.gd`).
+
+## Gói WORLD (địa hình, nhà, núi đá, con vật)
+
+Texture CC0 từ [Poly Haven](https://polyhaven.com) (tải lại bằng `tools/fetch_assets.py`):
+
+| Asset | Dùng cho |
+|---|---|
+| [sparse_grass](https://polyhaven.com/a/sparse_grass) | bãi cỏ quanh nhà (`shaders/ground.gdshader`) |
+| [grass_path_3](https://polyhaven.com/a/grass_path_3) | lối mòn đất nện, mặt bờ ruộng, bụi đất trên sân |
+| [worn_mossy_plasterwall](https://polyhaven.com/a/worn_mossy_plasterwall) | vết ố, mốc trên tường vôi (`shaders/wall.gdshader`) |
+| [rock_pitted_mossy](https://polyhaven.com/a/rock_pitted_mossy) | vân đá vôi trên núi (`shaders/karst.gdshader`), chân tảng cột |
+
+Mô hình CC-BY 4.0 (phải ghi công tác giả):
+
+| Asset | Tác giả | Giấy phép | Dùng cho |
+|---|---|---|---|
+| ["Realistic Pig / Porco 3D Model"](https://sketchfab.com/3d-models/realistic-pig-porco-3d-model-72834b8b47c7438c827cd0f2258ae656) | [William Aleixo (WildMesh3DFree)](https://sketchfab.com/WildMesh3DFree) | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) | con lợn trong chuồng (`assets/models/pig/`) |
+
+This work is based on "Realistic Pig / Porco 3D Model" (https://sketchfab.com/3d-models/realistic-pig-porco-3d-model-72834b8b47c7438c827cd0f2258ae656) by William Aleixo (https://sketchfab.com/WildMesh3DFree) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). The file was taken unchanged from a public GitHub mirror of the Sketchfab download; in the game its roughness is raised so the skin is matte.
+
+Trâu, vịt, bèo tây, núi đá vôi, tường, mái và sân gạch được dựng bằng code trong `scripts/world.gd`, `scripts/ducks.gd`, `scripts/courtyard.gd` và `shaders/` (ground, wall, roof, court, karst).

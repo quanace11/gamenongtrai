@@ -56,8 +56,10 @@ static func _shadows(n: Node) -> void:
 
 
 # Some Poly Haven plant files hold several variants side by side. This
-# returns each mesh on its own, re-centred on its base, so they can be
-# scattered with a MultiMesh: [{mesh, height}].
+# returns each mesh on its own with the transform that stands it on its
+# base at the origin: [{mesh, xf, height}]. The imported mesh is used as
+# is, so the LODs and shadow mesh the importer generated keep working
+# (rebuilding the surfaces would throw them away).
 static func parts(id: String) -> Array:
 	if _parts.has(id):
 		return _parts[id]
@@ -75,56 +77,79 @@ static func _collect(n: Node, xf: Transform3D, out: Array) -> void:
 		t = xf * (n as Node3D).transform
 	if n is MeshInstance3D:
 		var mi := n as MeshInstance3D
-		var src: Mesh = mi.mesh
-		var a: AABB = t * src.get_aabb()
+		var a: AABB = t * mi.mesh.get_aabb()
 		var shift := Vector3(-(a.position.x + a.size.x / 2.0), -a.position.y, -(a.position.z + a.size.z / 2.0))
-		var mesh := ArrayMesh.new()
-		for s in src.get_surface_count():
-			var arrays := src.surface_get_arrays(s)
-			var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-			for i in verts.size():
-				verts[i] = t * verts[i] + shift
-			arrays[Mesh.ARRAY_VERTEX] = verts
-			if arrays[Mesh.ARRAY_NORMAL] != null:
-				var nr: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
-				for i in nr.size():
-					nr[i] = (t.basis * nr[i]).normalized()
-				arrays[Mesh.ARRAY_NORMAL] = nr
-			if arrays[Mesh.ARRAY_TANGENT] != null:
-				var tg: PackedFloat32Array = arrays[Mesh.ARRAY_TANGENT]
-				for i in tg.size() / 4:
-					var v := (t.basis * Vector3(tg[i * 4], tg[i * 4 + 1], tg[i * 4 + 2])).normalized()
-					tg[i * 4] = v.x
-					tg[i * 4 + 1] = v.y
-					tg[i * 4 + 2] = v.z
-				arrays[Mesh.ARRAY_TANGENT] = tg
-			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-			var m: Material = mi.get_active_material(s)
-			mesh.surface_set_material(s, m)
-		out.append({"mesh": mesh, "height": a.size.y})
+		for s in mi.mesh.get_surface_count():
+			_leaf_edges(mi.get_active_material(s))
+		out.append({"mesh": mi.mesh, "xf": Transform3D(t.basis, t.origin + shift), "height": a.size.y})
 	for c in n.get_children():
 		_collect(c, t, out)
 
 
+# Cut-out leaf cards (glTF alphaMode MASK): soft, stable edges with
+# alpha to coverage (MSAA) and a little light through the leaves.
+static func _leaf_edges(m: Material) -> void:
+	var bm := m as BaseMaterial3D
+	if bm == null or bm.transparency != BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR:
+		return
+	bm.alpha_antialiasing_mode = BaseMaterial3D.ALPHA_ANTIALIASING_ALPHA_TO_COVERAGE
+	bm.alpha_antialiasing_edge = 0.3
+	bm.backlight_enabled = true
+	bm.backlight = Color(0.22, 0.26, 0.1)
+
+
 # Scatter copies of the given parts over `points` ([Vector3 pos, yaw, scale]).
-static func scatter(parent: Node3D, id: String, points: Array, shadows := true) -> void:
+# Copies are grouped into `cell`-metre chunks so each chunk picks its own
+# LOD and stops drawing beyond `view` metres. `sink` buries each copy by
+# that fraction of its height; `mat` replaces the model's own material.
+static func scatter(parent: Node3D, id: String, points: Array, shadows := true, view := 45.0, sink := 0.0, mat: Material = null, cell := 16.0) -> void:
 	var ps := parts(id)
-	var buckets := []
-	for p in ps:
-		buckets.append([])
+	var groups := {}
 	for i in points.size():
-		buckets[i % ps.size()].append(points[i])
-	for k in ps.size():
-		if buckets[k].is_empty():
-			continue
+		var pos: Vector3 = points[i][0]
+		var key := Vector3i(i % ps.size(), floori(pos.x / cell), floori(pos.z / cell))
+		if not groups.has(key):
+			groups[key] = []
+		groups[key].append(points[i])
+	for key: Vector3i in groups:
+		var part: Dictionary = ps[key.x]
+		var list: Array = groups[key]
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.mesh = ps[k].mesh
-		mm.instance_count = buckets[k].size()
-		for i in buckets[k].size():
-			var p: Array = buckets[k][i]
-			mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, p[1]).scaled(Vector3.ONE * p[2]), p[0]))
+		mm.mesh = part.mesh
+		mm.instance_count = list.size()
+		for i in list.size():
+			var p: Array = list[i]
+			var s: float = p[2]
+			var origin: Vector3 = p[0] + Vector3.DOWN * sink * part.height * s
+			mm.set_instance_transform(i, Transform3D(Basis(Vector3.UP, p[1]).scaled(Vector3.ONE * s), origin) * part.xf)
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
+		if mat != null:
+			mmi.material_override = mat
 		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mmi.visibility_range_end = view
+		mmi.visibility_range_end_margin = view * 0.15
+		mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		parent.add_child(mmi)
+
+
+# The model's material with its colour texture desaturated and tinted, e.g.
+# to turn the warm sandstone of the Poly Haven rocks into grey river stone.
+static func recolor(id: String, saturation: float, tint: Color, brightness := 1.0) -> Material:
+	var key := "recolor|%s|%s|%s|%s" % [id, saturation, tint.to_html(), brightness]
+	if _mats.has(key):
+		return _mats[key]
+	var src: BaseMaterial3D = (parts(id)[0].mesh as Mesh).surface_get_material(0)
+	var m: BaseMaterial3D = src.duplicate()
+	if src.albedo_texture != null:
+		var img := src.albedo_texture.get_image()
+		if img.is_compressed():
+			img.decompress()
+		img.clear_mipmaps()
+		img.adjust_bcs(brightness, 1.0, saturation)
+		img.generate_mipmaps()
+		m.albedo_texture = ImageTexture.create_from_image(img)
+	m.albedo_color = tint
+	_mats[key] = m
+	return m

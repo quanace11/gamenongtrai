@@ -2,21 +2,20 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c8rnic2nokx02"
-path.s3tc="res://.godot/imported/weed_plant_02_diff_1k.jpg-8d0f1141605aa2d5033e9945ead487b8.s3tc.ctex"
+uid="uid://d174dsejs4l6d"
+path="res://.godot/imported/sparse_grass_nor_1k.jpg-d3a50c67434ca7abdef9dce6098332a6.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
-"vram_texture": true
+"vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/models/weed_plant_02/textures/weed_plant_02_diff_1k.jpg"
-dest_files=["res://.godot/imported/weed_plant_02_diff_1k.jpg-8d0f1141605aa2d5033e9945ead487b8.s3tc.ctex"]
+source_file="res://assets/textures/sparse_grass/sparse_grass_nor_1k.jpg"
+dest_files=["res://.godot/imported/sparse_grass_nor_1k.jpg-d3a50c67434ca7abdef9dce6098332a6.ctex"]
 
 [params]
 
-compress/mode=2
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
@@ -24,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

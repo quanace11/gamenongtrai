@@ -32,3 +32,16 @@ for m in mods:
   dl(g['url'], f'{root}/models/{m}/{m}_1k.gltf')
   for rel,v in g['include'].items(): dl(v['url'], f'{root}/models/{m}/{rel}')
   print('model',m,flush=True)
+
+# ---- package WORLD: terrain, house, karst textures (CC0) and the pig (CC-BY 4.0)
+for t in ['sparse_grass','grass_path_3','worn_mossy_plasterwall','rock_pitted_mossy']:
+  f=get('https://api.polyhaven.com/files/'+t)
+  for k,suf in [('Diffuse','diff'),('nor_gl','nor'),('arm','arm')]:
+    dl(f[k]['1k']['jpg']['url'], f'{root}/textures/{t}/{t}_{suf}_1k.jpg')
+  print('tex',t,flush=True)
+# "Realistic Pig / Porco 3D Model" by William Aleixo, CC-BY 4.0 (see assets/CREDITS.md),
+# from a public GitHub mirror of the Sketchfab download.
+pig='https://raw.githubusercontent.com/2blackhole/fuzzy-goggles/HEAD/normik/models/realistic_pig/'
+for rel,dst in [('scene.gltf','pig_1k.gltf'),('scene.bin','scene.bin'),('textures/Material_baseColor.png','textures/Material_baseColor.png'),('textures/Material.001_baseColor.png','textures/Material.001_baseColor.png')]:
+  dl(pig+rel, f'{root}/models/pig/{dst}')
+print('model pig',flush=True)
