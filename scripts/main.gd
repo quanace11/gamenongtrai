@@ -191,10 +191,10 @@ func _setup_environment() -> void:
 	env.glow_intensity = 0.3
 	env.glow_strength = 1.0
 	env.glow_bloom = 0.0
-	env.glow_hdr_threshold = 1.2
+	env.glow_hdr_threshold = 2.0
 	env.glow_hdr_scale = 2.0
 	for i in 7:
-		env.set_glow_level(i, [0.0, 0.5, 0.5, 0.35, 0.15, 0.0, 0.0][i])
+		env.set_glow_level(i, [0.0, 0.8, 0.5, 0.25, 0.1, 0.0, 0.0][i])
 	# Contact shadows that also darken direct sunlight, plus one bounce of
 	# screen-space indirect light (green under bamboo, warm off the bricks).
 	env.ssao_enabled = true
@@ -1163,7 +1163,7 @@ func _update_sky() -> float:
 	# Golden hour: the sun keeps real strength near the horizon and turns
 	# deep orange through the thick, humid air instead of fading to grey.
 	var up := smoothstep(-0.02, 0.04, elev)
-	sun.light_energy = (0.7 + 1.4 * smoothstep(0.0, 0.5, e)) * up * (1.0 - 0.85 * s)
+	sun.light_energy = (1.0 + 2.0 * smoothstep(0.0, 0.5, e)) * up * (1.0 - 0.85 * s)
 	sun.light_color = Color(1.0, 0.48, 0.2).lerp(Color(1.0, 0.76, 0.52), smoothstep(0.0, 0.14, e)).lerp(Color(1.0, 0.95, 0.88), smoothstep(0.14, 0.5, e))
 	sun.shadow_enabled = sun.light_energy > 0.02
 	sun.light_volumetric_fog_energy = 1.0 + 1.5 * (1.0 - smoothstep(0.1, 0.4, e))
@@ -1176,28 +1176,28 @@ func _update_sky() -> float:
 
 	# Sky light: a bright overcast-ish humid sky by day, warm and lower at
 	# dusk, dim blue at night; storms darken it, lightning flashes it.
-	env.ambient_light_energy = (0.2 + lerpf(0.35, 0.8, smoothstep(0.0, 0.45, e)) * daylight) * (1.0 - 0.35 * s) + flash * 1.5
+	env.ambient_light_energy = (0.25 + lerpf(0.2, 0.35, smoothstep(0.0, 0.45, e)) * daylight) * (1.0 + 0.3 * s) + flash * 1.5
 	# Eyes adapt: AgX maps mid grey 1:1 (no ACES bias), so day exposure is
 	# ~1.3; lift it at night so the farm stays playable by moonlight.
-	env.tonemap_exposure = lerpf(2.6, 1.3, smoothstep(0.0, 0.6, daylight)) * lerpf(1.0, 1.15, s)
+	env.tonemap_exposure = lerpf(2.2, 1.05, smoothstep(0.0, 0.6, daylight)) * lerpf(1.0, 1.15, s)
 	# Scotopic vision: colours drain at night.
 	env.adjustment_saturation = lerpf(0.6, 1.08, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
 
 	# Haze: morning mist that burns off by ~9:00, humid day haze, dense rain
 	# haze in storms. Fog colour is only 20 % of the look (aerial perspective
 	# takes the sky colour), so it just keeps the haze bright or dark.
-	var morning := smoothstep(3.0, 5.0, h) * (1.0 - smoothstep(6.5, 9.0, h))
+	var morning := smoothstep(3.0, 5.0, h) * (1.0 - smoothstep(6.0, 8.5, h))
 	var evening := smoothstep(18.0, 21.0, h) + (1.0 - smoothstep(1.0, 4.0, h))
 	var fog_c := Color(0.08, 0.1, 0.15).lerp(Color(0.80, 0.84, 0.87), daylight)
 	fog_c = fog_c.lerp(Color(0.98, 0.78, 0.6), dusk * 0.7).lerp(Color(0.45, 0.48, 0.5), s * 0.85)
 	if flash > 0.0:
 		fog_c = fog_c.lerp(Color("dde6ff"), flash)
 	env.fog_light_color = fog_c
-	env.fog_density = lerpf(lerpf(0.0045, 0.009, morning), 0.022, s)
+	env.fog_density = lerpf(lerpf(0.003, 0.006, morning), 0.018, s)
 	env.fog_sun_scatter = 0.15 + 0.25 * dusk
 	# Ground mist over the paddies (volumetric, thins with height).
 	var fm: FogMaterial = mist.material
-	fm.density = 0.07 * morning + 0.025 * clampf(evening, 0.0, 1.0) * (1.0 - daylight) + 0.03 * s
+	fm.density = 0.014 * morning + 0.008 * clampf(evening, 0.0, 1.0) * (1.0 - daylight) + 0.01 * s
 	mist.visible = fm.density > 0.001
 
 	# Porch lamp: on from dusk until morning.
@@ -1216,11 +1216,14 @@ func _update_sky() -> float:
 		probe.position.y = 11.0 + 0.001 * float(key % 2)
 		if jump:
 			probe.update_mode = ReflectionProbe.UPDATE_ALWAYS
+			# and the volumetric mist must not ghost the old hour for a while
+			env.volumetric_fog_temporal_reprojection_enabled = false
 			_probe_fast = 2
 	elif _probe_fast > 0:
 		_probe_fast -= 1
 		if _probe_fast == 0:
 			probe.update_mode = ReflectionProbe.UPDATE_ONCE
+			env.volumetric_fog_temporal_reprojection_enabled = true
 
 	RenderingServer.global_shader_parameter_set("wind_gust", 1.0 + s * 2.5)
 	RenderingServer.global_shader_parameter_set("rain_amount", 1.0 if raining else 0.0)

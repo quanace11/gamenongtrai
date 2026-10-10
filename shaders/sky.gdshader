@@ -17,6 +17,7 @@ uniform float flash = 0.0; // lightning
 uniform float drift = 0.0; // tiny cloud wobble, in turns
 uniform float night_gain = 0.04;
 uniform float humid = 1.0; // milky, desaturated tropical haze
+uniform float day_gain = 0.8; // the misty HDRI is bright all round: keep sun/sky contrast
 // Where the sun is in each panorama: x = u (turns), y = elevation (radians).
 uniform vec2 day_sun = vec2(0.470, 0.50);
 uniform vec2 dusk_sun = vec2(0.596, 0.02);
@@ -47,7 +48,7 @@ void sky() {
 	vec3 L = LIGHT0_ENABLED ? LIGHT0_DIRECTION : vec3(0.0, 1.0, 0.0);
 	vec2 sun_uv = vec2(fract(atan(L.x, -L.z) / 6.2831853), acos(clamp(L.y, -1.0, 1.0)) / 3.14159265);
 
-	vec3 day = pano(day_tex, aligned(uv, sun_uv, day_sun, day_warp), 2.2);
+	vec3 day = pano(day_tex, aligned(uv, sun_uv, day_sun, day_warp), 2.2) * day_gain;
 	vec3 sunset = pano(dusk_tex, aligned(uv, sun_uv, dusk_sun, 0.0), 6.0);
 	vec3 night = pano(night_tex, uv + vec2(drift, 0.0), 1.0) * night_gain * vec3(0.55, 0.7, 1.0);
 	vec3 grey = pano(storm_tex, aligned(uv, sun_uv, storm_sun, 0.0), 1.6);
@@ -55,12 +56,12 @@ void sky() {
 	// Humid tropical air: less saturated blue, and a bright milky band at the
 	// horizon that the fog and the far karst melt into.
 	float l = dot(day, vec3(0.2126, 0.7152, 0.0722));
-	day = mix(day, vec3(l) * vec3(0.97, 0.99, 1.03), 0.25 * humid);
+	day = mix(day, vec3(l) * vec3(0.97, 0.99, 1.03), 0.15 * humid);
 	float low = pow(1.0 - clamp(EYEDIR.y, 0.0, 1.0), 6.0);
-	day = mix(day, haze_col * max(l, 0.9) * 1.05, low * 0.55 * humid);
+	day = mix(day, haze_col * max(l, 0.85 * day_gain), low * 0.4 * humid);
 
 	vec3 col = mix(night, day, daylight);
-	col = mix(col, sunset * max(daylight, 0.3), dusk);
+	col = mix(col, sunset * mix(0.4, 1.0, daylight), dusk);
 	col = mix(col, grey * (0.25 + 0.55 * daylight), storm);
 
 	if (LIGHT0_ENABLED && !AT_CUBEMAP_PASS) {
@@ -74,9 +75,9 @@ void sky() {
 	// Fade the lower hemisphere into a hazy horizon colour; the land covers it.
 	float below = smoothstep(0.02, -0.15, EYEDIR.y);
 	vec2 hz = vec2(uv.x, 0.49);
-	vec3 hz_day = pano(day_tex, aligned(hz, sun_uv, day_sun, 0.0), 2.2);
-	vec3 haze = mix(pano(night_tex, hz, 1.0) * night_gain * vec3(0.55, 0.7, 1.0), mix(hz_day, haze_col * 1.1, 0.5 * humid), daylight);
-	haze = mix(haze, pano(dusk_tex, aligned(hz, sun_uv, dusk_sun, 0.0), 6.0) * max(daylight, 0.3), dusk);
+	vec3 hz_day = pano(day_tex, aligned(hz, sun_uv, day_sun, 0.0), 2.2) * day_gain;
+	vec3 haze = mix(pano(night_tex, hz, 1.0) * night_gain * vec3(0.55, 0.7, 1.0), mix(hz_day, haze_col * day_gain, 0.5 * humid), daylight);
+	haze = mix(haze, pano(dusk_tex, aligned(hz, sun_uv, dusk_sun, 0.0), 6.0) * mix(0.4, 1.0, daylight), dusk);
 	col = mix(col, mix(haze, grey * 0.4, storm), below);
 	col += vec3(0.75, 0.8, 1.0) * flash;
 	COLOR = col;
