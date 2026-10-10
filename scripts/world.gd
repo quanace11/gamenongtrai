@@ -639,6 +639,9 @@ static func _plants(root: Node3D) -> void:
 	# masked off the paddy, yard, paths, house, canal and pond. No shadows.
 	var lawn: Node3D = preload("res://scripts/grass_lawn.gd").new()
 	lawn.name = "Lawn"
+	# thinner, drier grass in the shade of the bamboo clumps
+	for g in groves:
+		lawn.shade_spots.append(Vector3(g.x, g.y, 4.0))
 	root.add_child(lawn)
 	# Taller, thin-bladed tufts only where grass grows rank: bund tops and
 	# canal banks.
@@ -678,17 +681,35 @@ static func _plants(root: Node3D) -> void:
 		rocks.append([Vector3(L.POND.x + cos(a) * r, 0.0, L.POND.z + sin(a) * r), rng.randf() * TAU, rng.randf_range(0.8, 1.7)])
 	for i in 26:
 		rocks.append([Vector3([L.CANAL.x0 - 0.35, L.CANAL.x1 + 0.35][i % 2] + rng.randf_range(-0.15, 0.15), 0.0, rng.randf_range(-30, 26)), rng.randf() * TAU, rng.randf_range(0.8, 1.6)])
-	var pebbles := []
+	# Every stone sits on the real ground height; none in the canal or the
+	# pond water (the canal floor is 0.75 m down, so they would float).
+	var stones := []
 	for p in rocks:
+		if _stone_ok(p[0]):
+			stones.append(p)
+	var pebbles := []
+	for p in stones:
 		for k in 2:
-			var o := Vector3(rng.randf_range(-0.5, 0.5), 0.0, rng.randf_range(-0.5, 0.5))
-			pebbles.append([p[0] + o, rng.randf() * TAU, rng.randf_range(0.6, 1.2)])
-	A.scatter(root, "weed_plant_02", weeds, true, 30.0)
-	A.scatter(root, "nettle_plant", weeds.slice(0, weeds.size() / 2), true, 30.0)
+			var q: Vector3 = p[0] + Vector3(rng.randf_range(-0.5, 0.5), 0.0, rng.randf_range(-0.5, 0.5))
+			if _stone_ok(q):
+				pebbles.append([q, rng.randf() * TAU, rng.randf_range(0.6, 1.2)])
+	for p in stones + pebbles:
+		var v: Vector3 = p[0]
+		p[0] = Vector3(v.x, L.ground_y(v.x, v.z), v.z)
+	rocks = stones
+	# knee-high weeds cast no shadows (one less pass per cascade)
+	A.scatter(root, "weed_plant_02", weeds, false, 30.0)
+	A.scatter(root, "nettle_plant", weeds.slice(0, weeds.size() / 2), false, 30.0)
 	A.scatter(root, "shrub_04", shrubs, true, 40.0)
 	A.scatter(root, "fern_02", shrubs, true, 40.0)
 	A.scatter(root, "rock_07", rocks, true, 45.0, 0.4, A.recolor("rock_07", 0.25, Color(0.9, 0.92, 0.94), 1.2))
 	A.scatter(root, "stone_01", pebbles, false, 25.0, 0.35, A.recolor("stone_01", 0.2, Color(0.86, 0.87, 0.88), 1.1))
+
+
+static func _stone_ok(q: Vector3) -> bool:
+	if q.x > L.CANAL.x0 - 0.05 and q.x < L.CANAL.x1 + 0.05:
+		return false
+	return Vector2(q.x - L.POND.x, q.z - L.POND.z).length() > L.POND.r + 0.2
 
 
 static func _clear_for_grass(x: float, z: float) -> bool:

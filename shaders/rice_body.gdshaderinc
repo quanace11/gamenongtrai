@@ -79,6 +79,11 @@ void fragment() {
 		col *= 0.9 + 0.2 * fract(rnd * 3.7 + v_state.z);
 		// a few darker, rust-tinged grains
 		col = mix(col, col * vec3(0.8, 0.66, 0.5), smoothstep(0.72, 1.0, fract(rnd * 13.7 + rank * 3.1)) * mat);
+#ifndef PANICLE_PASS
+		// solid far panicles: match the average shade of the near grain
+		// ribbons (gaps and shaded husks) so the lod change is not a stripe
+		col *= 0.85;
+#endif
 	} else {
 		col = mix(c_sheath, green, organ < 0.25 ? smoothstep(0.0, 0.25, t) : 0.15);
 		// senescence: lower leaves first, from the tip down
@@ -119,9 +124,11 @@ void fragment() {
 	ALBEDO = col;
 	// husks are matte; waxy leaves get a soft streak along the blade
 	float grain = step(0.75, organ);
-	ROUGHNESS = mix(mix(0.5, 0.64, max(mat, stubble)), 0.78, grain);
-	SPECULAR = mix(0.4, 0.25, grain);
-	ANISOTROPY = 0.25 * (1.0 - under) * (1.0 - grain);
+	// (rougher than a glossy leaf: thin blades at grazing sun otherwise flash
+	// silver-white; real rice has a dull waxy sheen)
+	ROUGHNESS = mix(mix(0.62, 0.72, max(mat, stubble)), 0.8, grain);
+	SPECULAR = mix(0.3, 0.2, grain);
+	ANISOTROPY = 0.12 * (1.0 - under) * (1.0 - grain);
 	BACKLIGHT = col * mix(0.38, 0.26, mat) * (1.0 - under);
 	AO = mix(0.35, 1.0, smoothstep(0.0, 0.75, COLOR.a));
 	AO_LIGHT_AFFECT = 0.5;

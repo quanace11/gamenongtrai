@@ -1,9 +1,10 @@
 # The village lawn: short grass blades that follow the camera (see
 # shaders/grass_lawn.gdshader). Two MultiMeshes of single blades:
-#   near: a 24 m wrap patch of 4-blade tufts 14 cm apart on High (~215
+#   near: a 24 m wrap patch of 5-blade tufts 12 cm apart on High (~350
 #         blades per m²), 3 segments, fading out at 8.5-11.5 m;
-#   far:  a 48 m patch of wider 2-segment tufts that grows in where the
-#         near patch fades and fades out by 23 m.
+#   far:  a 48 m patch of wider 3-blade, 2-segment tufts 34 cm apart that
+#         is fully grown in before the near patch starts to fade (no density
+#         step at the handover) and fades out by 23.5 m.
 # The mask (density, dryness, tall grass, trodden path) and the height map
 # are painted once from layout.gd: no grass in the paddy, courtyard, house,
 # pens, canal, pond or nursery bed, and none on the bund steps, where
@@ -16,7 +17,7 @@ const SHADER = preload("res://shaders/grass_lawn.gdshader")
 const MAP_RECT := Rect2(-40.0, -44.0, 80.0, 80.0)
 const RES := 256
 # [near grid, far grid] per quality level 0..2
-const GRIDS := [[120, 72], [148, 88], [176, 104]]
+const GRIDS := [[130, 90], [165, 115], [200, 140]]
 
 var shade_spots: Array = [] # [Vector3(x, z, radius)] under groves: thinner, drier grass
 var _near: MultiMeshInstance3D
@@ -28,8 +29,8 @@ func _ready() -> void:
 	add_to_group("quality")
 	var maps := _paint()
 	var nz := F.wind_noise()
-	_near = _patch(24.0, 3, Vector2(8.5, 11.5), Vector2.ZERO, 0.0068, maps, nz)
-	_far = _patch(48.0, 2, Vector2(18.0, 23.0), Vector2(8.0, 11.0), 0.011, maps, nz)
+	_near = _patch(24.0, 3, 5, Vector2(8.5, 11.5), Vector2.ZERO, 0.0068, maps, nz)
+	_far = _patch(48.0, 2, 3, Vector2(19.0, 23.5), Vector2(6.0, 8.5), 0.014, maps, nz)
 	set_quality(2)
 
 
@@ -91,10 +92,10 @@ static func blade_mesh(segs: int, blades := 4) -> ArrayMesh:
 	return m
 
 
-func _patch(size: float, segs: int, fade: Vector2, fade_in: Vector2, width: float, maps: Array, nz: Texture2D) -> MultiMeshInstance3D:
+func _patch(size: float, segs: int, blades: int, fade: Vector2, fade_in: Vector2, width: float, maps: Array, nz: Texture2D) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = blade_mesh(segs)
+	mm.mesh = blade_mesh(segs, blades)
 	# Always around the camera: one big box instead of per-frame AABB updates.
 	mm.custom_aabb = AABB(Vector3(MAP_RECT.position.x, -3.0, MAP_RECT.position.y), Vector3(MAP_RECT.size.x, 8.0, MAP_RECT.size.y))
 	var mat := ShaderMaterial.new()

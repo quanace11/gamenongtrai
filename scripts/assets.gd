@@ -102,7 +102,7 @@ static func _leaf_edges(m: Material) -> void:
 # Copies are grouped into `cell`-metre chunks so each chunk picks its own
 # LOD and stops drawing beyond `view` metres. `sink` buries each copy by
 # that fraction of its height; `mat` replaces the model's own material.
-static func scatter(parent: Node3D, id: String, points: Array, shadows := true, view := 45.0, sink := 0.0, mat: Material = null, cell := 16.0) -> void:
+static func scatter(parent: Node3D, id: String, points: Array, shadows := true, view := 45.0, sink := 0.0, mat: Material = null, cell := 32.0) -> void:
 	var ps := parts(id)
 	var groups := {}
 	for i in points.size():

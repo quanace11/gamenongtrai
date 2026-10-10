@@ -410,7 +410,8 @@ static func seedling_patch_mesh(n := 28, radius := 0.075) -> ArrayMesh:
 		var hgt := rng.randf_range(0.15, 0.25)
 		var k := rng.randf_range(0.85, 1.12)
 		var yellow := rng.randf()
-		var col := Color(0.34, 0.56, 0.14).lerp(Color(0.5, 0.66, 0.22), yellow * 0.6) * k
+		# mạ: a deeper green than lawn grass, a few paler yellowish seedlings
+		var col := Color(0.28, 0.5, 0.12).lerp(Color(0.44, 0.6, 0.18), yellow * yellow * 0.7) * k
 		var phi := rng.randf() * TAU
 		for j in rng.randi_range(3, 4):
 			var a := phi + PI * j + rng.randf_range(-0.6, 0.6)
@@ -457,9 +458,15 @@ static func seedling_bed(parent: Node3D, center: Vector3, size: Vector2, count: 
 	mm.use_colors = true
 	mm.mesh = seedling_patch_mesh()
 	mm.instance_count = count
+	# Two 18 cm walkway furrows across the bed (rãnh luống) split it into
+	# three strips, as in a real mạ bed; the patches fill the strips.
+	var gap := 0.18
+	var strip := (size.y - 2.0 * gap) / 3.0
 	for i in count:
 		var cx := (float(i % cols) + 0.5 + rng.randf_range(-0.35, 0.35)) / cols - 0.5
-		var cz := (float(i / cols) + 0.5 + rng.randf_range(-0.35, 0.35)) / rows - 0.5
+		var u := clampf((float(i / cols) + 0.5 + rng.randf_range(-0.35, 0.35)) / rows, 0.0, 0.999)
+		var zs := u * 3.0
+		var cz := (floorf(zs) * (strip + gap) + fmod(zs, 1.0) * strip) / size.y - 0.5
 		var s := rng.randf_range(0.9, 1.15)
 		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s * 1.15, s * rng.randf_range(0.85, 1.1), s * 1.15))
 		mm.set_instance_transform(i, Transform3D(b, center + Vector3(cx * size.x, 0.0, cz * size.y)))

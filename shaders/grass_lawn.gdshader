@@ -22,10 +22,10 @@ uniform vec4 map_rect = vec4(-40.0, -44.0, 80.0, 80.0); // x0, z0, width, depth
 uniform sampler2D grass_mask : filter_linear, repeat_disable;  // R density, G dryness, B tall, A trodden
 uniform sampler2D height_map : filter_linear, repeat_disable;  // R ground height (m)
 uniform sampler2D noise : filter_linear_mipmap, repeat_enable; // shared wind / patch noise
-uniform float blade_height = 0.18;
+uniform float blade_height = 0.2;
 uniform float blade_width = 0.0028;  // half width at the root
 uniform float far_widen = 1.6;       // extra width at fade_end, against shimmer
-uniform vec3 lush : source_color = vec3(0.22, 0.40, 0.10);
+uniform vec3 lush : source_color = vec3(0.18, 0.36, 0.08);
 uniform vec3 fresh : source_color = vec3(0.38, 0.54, 0.16);
 uniform vec3 dry : source_color = vec3(0.60, 0.53, 0.31);
 uniform vec3 soil : source_color = vec3(0.30, 0.25, 0.17);
@@ -73,7 +73,7 @@ void vertex() {
 	}
 	// clumpy growth: thin patches and dense tussocks
 	float clump = textureLod(noise, root * 0.09 + vec2(0.13, 0.57), 0.0).r;
-	float keep = m.r * mix(0.55, 1.15, smoothstep(0.3, 0.7, clump));
+	float keep = m.r * mix(0.75, 1.2, smoothstep(0.3, 0.7, clump));
 	float t = UV.y;                // 0 root .. 1 tip
 	float side = UV.x * 2.0 - 1.0; // -1 .. 1 across
 	bool outside = muv.x < 0.0 || muv.y < 0.0 || muv.x > 1.0 || muv.y > 1.0;

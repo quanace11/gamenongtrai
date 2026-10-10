@@ -36,25 +36,35 @@ for m in mods:
 # ---- VEG package: cut-out leaves for the Poly Haven plants --------------
 # Their glTFs say alphaMode MASK but ship a 3-channel JPEG diffuse, so the
 # leaf cards render as opaque quads. Merge the separate alpha map into an
-# RGBA PNG diffuse (512 px) and point the glTF image at it. Needs Pillow.
+# RGBA PNG diffuse (fern_02, seen close up in pots, at 1024 px; the rest at
+# 512 px) and point the glTF image at it. Needs Pillow. Re-download the 1k
+# diffuse here: the model loop's copy is shrunk to 512 px by mogrify.
+LEAF_PX={'fern_02':1024}
 def cut_out_leaves(m):
   from PIL import Image
   d=f'{root}/models/{m}/textures'
   png=f'{d}/{m}_diff_1k.png'
-  if os.path.exists(png): return
+  jpg=f'{d}/{m}_diff_1k.jpg'
+  if os.path.exists(png):
+    # the model loop above re-fetches the glTF's original JPEG; drop it
+    if os.path.exists(jpg): os.remove(jpg)
+    return
   f=get('https://api.polyhaven.com/files/'+m)
   dl(f['Alpha']['1k']['png']['url'], f'{d}/{m}_alpha_1k.png')
+  if os.path.exists(jpg): os.remove(jpg)
+  dl(f['Diffuse']['1k']['jpg']['url'], jpg)
+  px=LEAF_PX.get(m,512)
   a=Image.open(f'{d}/{m}_alpha_1k.png')
   if a.mode in ('I','I;16','I;16B'): a=a.point(lambda v: v/257).convert('L')
-  a=a.convert('L').resize((512,512),Image.LANCZOS)
-  rgb=Image.open(f'{d}/{m}_diff_1k.jpg').convert('RGB').resize((512,512),Image.LANCZOS)
+  a=a.convert('L').resize((px,px),Image.LANCZOS)
+  rgb=Image.open(jpg).convert('RGB').resize((px,px),Image.LANCZOS)
   rgb.putalpha(a); rgb.save(png)
   g=f'{root}/models/{m}/{m}_1k.gltf'
   s=open(g).read().replace(f'{m}_diff_1k.jpg',f'{m}_diff_1k.png')
   import re
   s=re.sub(r'"image/jpeg",(\s*"name": "[^"]*",)?(\s*"uri": "textures/'+m+r'_diff_1k\.png")', r'"image/png",\1\2', s)
   open(g,'w').write(s)
-  os.remove(f'{d}/{m}_alpha_1k.png'); os.remove(f'{d}/{m}_diff_1k.jpg')
+  os.remove(f'{d}/{m}_alpha_1k.png'); os.remove(jpg)
   print('leaves',m,flush=True)
 for m in ['fern_02','shrub_04','nettle_plant','weed_plant_02']:
   cut_out_leaves(m)
