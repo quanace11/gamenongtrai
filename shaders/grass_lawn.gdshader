@@ -133,6 +133,13 @@ void fragment() {
 	if (!FRONT_FACING) {
 		NORMAL = -NORMAL;
 	}
+	// Sky-bent or kept normals can face away from the eye on thin blades;
+	// GGX then blows up at grazing angles into HDR fireflies that the glow
+	// smears into white blobs. Keep N.V slightly positive.
+	{
+		float nv = dot(NORMAL, VIEW);
+		NORMAL = normalize(NORMAL + VIEW * max(0.0, 0.12 - nv));
+	}
 	ALBEDO = v_col * mix(1.0, 0.7, wetness);
 	ROUGHNESS = mix(0.62, 0.35, wetness);
 	SPECULAR = 0.32;

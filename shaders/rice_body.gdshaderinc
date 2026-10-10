@@ -46,7 +46,7 @@ void vertex() {
 	float flutter = sin(TIME * (2.4 + 2.6 * COLOR.b) + COLOR.b * 6.2832 + dot(root.xz, wind_dir) * 1.3);
 	// heavy ripe panicles lag and swing more
 	float heavy = step(0.75, COLOR.r) * (0.5 + ripe);
-	float bend = pow(hrel, 1.8) * plant_height * (0.09 * sway * (1.0 + heavy) + 0.018 * flutter);
+	float bend = pow(max(hrel, 0.0), 1.8) * plant_height * (0.09 * sway * (1.0 + heavy) + 0.018 * flutter);
 	// leaf tips flutter on their own
 	bend += UV.y * UV.y * 0.015 * flutter * wind_gust * (1.0 - step(0.25, COLOR.r));
 	vec3 off = vec3(wind_dir.x, 0.0, wind_dir.y) * bend;
@@ -54,7 +54,7 @@ void vertex() {
 	vec2 away = root.xz - player_pos.xz;
 	float pd = max(length(away), 1e-3);
 	float push = (1.0 - smoothstep(0.2, 0.65, pd)) * step(abs(player_pos.y - root.y), 1.2);
-	off.xz += away / pd * push * pow(hrel, 1.5) * plant_height * 0.45;
+	off.xz += away / pd * push * pow(max(hrel, 0.0), 1.5) * plant_height * 0.45;
 	off.y -= 0.5 * dot(off.xz, off.xz) / max(hrel * plant_height, 0.05);
 	// world offset back to model space without a 4x4 inverse (rotation + uniform scale)
 	mat3 m = mat3(MODEL_MATRIX);
@@ -109,11 +109,20 @@ void fragment() {
 	ALPHA = g.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.5;
 #endif
+	// Sky-bent or kept normals can face away from the eye on thin blades;
+	// GGX then blows up at grazing angles into HDR fireflies that the glow
+	// smears into white blobs. Keep N.V slightly positive.
+	{
+		float nv = dot(NORMAL, VIEW);
+		NORMAL = normalize(NORMAL + VIEW * max(0.0, 0.12 - nv));
+	}
 	ALBEDO = col;
-	ROUGHNESS = mix(0.45, 0.62, max(mat, stubble));
-	SPECULAR = 0.42;
-	ANISOTROPY = 0.4 * (1.0 - under) * (1.0 - step(0.75, organ));
-	BACKLIGHT = col * mix(0.5, 0.28, mat) * (1.0 - under);
+	// husks are matte; waxy leaves get a soft streak along the blade
+	float grain = step(0.75, organ);
+	ROUGHNESS = mix(mix(0.5, 0.64, max(mat, stubble)), 0.78, grain);
+	SPECULAR = mix(0.4, 0.25, grain);
+	ANISOTROPY = 0.25 * (1.0 - under) * (1.0 - grain);
+	BACKLIGHT = col * mix(0.38, 0.26, mat) * (1.0 - under);
 	AO = mix(0.35, 1.0, smoothstep(0.0, 0.75, COLOR.a));
 	AO_LIGHT_AFFECT = 0.5;
 }

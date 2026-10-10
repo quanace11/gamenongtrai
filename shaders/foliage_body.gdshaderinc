@@ -44,8 +44,17 @@ void fragment() {
 	if (keep_normal && !FRONT_FACING) {
 		NORMAL = -NORMAL;
 	}
+	// Sky-bent or kept normals can face away from the eye on thin blades;
+	// GGX then blows up at grazing angles into HDR fireflies that the glow
+	// smears into white blobs. Keep N.V slightly positive.
+	{
+		float nv = dot(NORMAL, VIEW);
+		NORMAL = normalize(NORMAL + VIEW * max(0.0, 0.12 - nv));
+	}
 	// Vertex and instance colours are authored in sRGB.
-	vec3 c = pow(COLOR.rgb, vec3(2.2)) * tint;
+	// max(): with MSAA the colour is extrapolated past thin blade tips and can
+	// dip below zero; pow() of that is NaN, which the glow smears into blobs.
+	vec3 c = pow(max(COLOR.rgb, vec3(0.0)), vec3(2.2)) * tint;
 #ifdef LEAF_TEX
 	// Alpha-cut leaf cards (bamboo, banana, palm fronds). Alpha scissor stays
 	// in the opaque pass; untextured users of this shader read alpha 1.

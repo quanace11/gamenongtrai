@@ -102,6 +102,19 @@ func _go() -> void:
 					m._refresh_nursery()
 					var sd: MultiMeshInstance3D = m.world.seedlings
 					print("SEED ", sd.multimesh.visible_instance_count, " ", sd.global_transform, " ", sd.multimesh.get_aabb(), " ", sd.get_aabb())
+					if _arg("--dbg") == "std":
+						var sm := StandardMaterial3D.new()
+						sm.vertex_color_use_as_albedo = true
+						sm.cull_mode = BaseMaterial3D.CULL_DISABLED
+						sd.material_override = sm
+					elif _arg("--dbg").begins_with("p:"):
+						var mt: ShaderMaterial = sd.material_override.duplicate()
+						for kv in _arg("--dbg").substr(2).split(";"):
+							var q := kv.split("=")
+							mt.set_shader_parameter(q[0], str_to_var(q[1]))
+						sd.material_override = mt
+					elif _arg("--dbg") == "hide":
+						sd.visible = false
 					await m._look_at(13, -12.3, 13, -16, -0.45)
 					await m._set_time(10.0)
 					await m._shot("nursery")
