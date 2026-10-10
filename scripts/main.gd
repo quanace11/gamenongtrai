@@ -209,12 +209,12 @@ func _setup_environment() -> void:
 	env.ssao_ao_channel_affect = 0.5
 	env.ssil_enabled = true
 	env.ssil_radius = 3.0
-	env.ssil_intensity = 0.8
+	env.ssil_intensity = 0.5
 	env.ssil_normal_rejection = 1.0
 	# Mirror paddies: the 4.6 SSR on the opaque water in soil.gdshader.
 	env.ssr_enabled = true
 	env.ssr_max_steps = 64
-	env.ssr_fade_in = 0.15
+	env.ssr_fade_in = 0.3
 	env.ssr_fade_out = 2.0
 	env.ssr_depth_tolerance = 0.5
 	# Humid delta air: exponential haze with strong aerial perspective (the
@@ -223,13 +223,14 @@ func _setup_environment() -> void:
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_EXPONENTIAL
 	env.fog_density = 0.0045
-	env.fog_aerial_perspective = 0.8
-	env.fog_sky_affect = 0.3
+	env.fog_aerial_perspective = 0.5
+	env.fog_sky_affect = 0.15
 	env.fog_sun_scatter = 0.15
 	env.fog_light_color = Color(0.80, 0.84, 0.87)
 	# Morning mist: volumetric fog with no global density; a FogVolume over
-	# the fields adds a layer that thins with height (see below).
-	env.volumetric_fog_enabled = true
+	# the fields adds a layer that thins with height (see below). The froxel
+	# pass only runs while the mist is out (_update_sky).
+	env.volumetric_fog_enabled = false
 	env.volumetric_fog_density = 0.0
 	env.volumetric_fog_albedo = Color(0.93, 0.95, 0.97)
 	env.volumetric_fog_anisotropy = 0.55
@@ -239,8 +240,8 @@ func _setup_environment() -> void:
 	env.volumetric_fog_sky_affect = 0.0
 	env.volumetric_fog_gi_inject = 0.0
 	env.adjustment_enabled = true
-	env.adjustment_saturation = 1.08
-	env.adjustment_contrast = 1.0
+	env.adjustment_saturation = 1.15
+	env.adjustment_contrast = 1.06
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
@@ -266,8 +267,10 @@ func _setup_environment() -> void:
 	moon.rotation = Vector3(-1.0, 0.8, 0)
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	moon.shadow_enabled = false
-	moon.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	moon.directional_shadow_max_distance = 40.0
+	# One orthogonal map over the near farm: moon shadows are soft and faint,
+	# so a single cheap pass is enough.
+	moon.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
+	moon.directional_shadow_max_distance = 25.0
 	moon.shadow_blur = 2.0
 	moon.light_angular_distance = 0.5
 	add_child(moon)
@@ -290,12 +293,16 @@ func _setup_environment() -> void:
 	probe = ReflectionProbe.new()
 	probe.size = Vector3(68.0, 26.0, 70.0)
 	probe.position = Vector3(0.0, 11.0, -5.0)
-	probe.origin_offset = Vector3(0.0, -10.0, 4.0)
+	# Capture at paddy height so the box-projected probe sees the house wall
+	# and eave the way the water does, not the roof.
+	probe.origin_offset = Vector3(0.0, -10.5, 4.0)
 	probe.box_projection = true
 	probe.update_mode = ReflectionProbe.UPDATE_ONCE
-	probe.max_distance = 600.0
-	probe.mesh_lod_threshold = 4.0
-	probe.enable_shadows = true
+	# Cheap captures: the groves, house and near hills are all inside 150 m,
+	# coarse LODs and no shadow pass (the haze hides both in a reflection).
+	probe.max_distance = 150.0
+	probe.mesh_lod_threshold = 8.0
+	probe.enable_shadows = false
 	probe.ambient_mode = ReflectionProbe.AMBIENT_DISABLED
 	probe.blend_distance = 4.0
 	add_child(probe)
@@ -304,10 +311,13 @@ func _setup_environment() -> void:
 	lamp = OmniLight3D.new()
 	lamp.position = Vector3(0.0, 2.6, -22.05)
 	lamp.light_color = Color(1.0, 0.66, 0.36)
-	lamp.omni_range = 11.0
 	lamp.omni_attenuation = 1.6
 	lamp.light_size = 0.04
+	# Dual-paraboloid: two shadow passes instead of six; the only casters
+	# near the bulb are the veranda posts.
+	lamp.omni_range = 8.0
 	lamp.shadow_enabled = true
+	lamp.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
 	lamp.shadow_bias = 0.05
 	lamp.light_energy = 0.0
 	lamp.visible = false
@@ -344,13 +354,19 @@ func _setup_environment() -> void:
 	cm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(cm)
 
+	# Quality presets (group "quality"): lamp and moon shadows, probe range
+	# and whether the volumetric mist may run. See light_quality.gd.
+	var q: Node = preload("res://scripts/light_quality.gd").new()
+	q.main = self
+	add_child(q)
+
 
 func _setup_particles() -> void:
 	# Rain: thin, faint streaks that are lit by the scene (grey in the storm
 	# light, dark at night), fading at both ends and right in front of the eye.
 	rain = CPUParticles3D.new()
 	var drop := QuadMesh.new()
-	drop.size = Vector2(0.012, 0.6)
+	drop.size = Vector2(0.018, 0.7)
 	var streak := Gradient.new()
 	streak.set_color(0, Color(1, 1, 1, 0))
 	streak.set_color(1, Color(1, 1, 1, 0))
@@ -363,7 +379,12 @@ func _setup_particles() -> void:
 	gt.fill_from = Vector2(0, 0)
 	gt.fill_to = Vector2(0, 1)
 	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(0.82, 0.86, 0.9, 0.4)
+	dm.albedo_color = Color(0.82, 0.86, 0.9, 0.55)
+	# A faint glow of their own, so streaks still read against dark foliage
+	# and wet ground (real rain catches the bright sky from every side).
+	dm.emission_enabled = true
+	dm.emission = Color(0.25, 0.27, 0.3)
+	dm.emission_energy_multiplier = 0.3
 	dm.albedo_texture = gt
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	dm.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
@@ -1140,6 +1161,8 @@ var wetness := 0.0 # 0 dry .. 1 soaked; rises in rain, dries over a few game hou
 var _wet_min := -1.0
 var _probe_key := -1
 var _probe_fast := 0
+var moon_shadows := true # quality preset (light_quality.gd)
+var vol_allowed := true # quality preset: may the volumetric mist run
 
 
 func _update_sky() -> float:
@@ -1168,24 +1191,27 @@ func _update_sky() -> float:
 	# deep orange through the thick, humid air instead of fading to grey.
 	var up := smoothstep(-0.02, 0.04, elev)
 	sun.light_energy = (1.0 + 2.0 * smoothstep(0.0, 0.5, e)) * up * (1.0 - 0.85 * s)
-	sun.light_color = Color(1.0, 0.48, 0.2).lerp(Color(1.0, 0.74, 0.48), smoothstep(0.0, 0.16, e)).lerp(Color(1.0, 0.95, 0.88), smoothstep(0.22, 0.6, e))
+	sun.light_color = Color(1.0, 0.55, 0.28).lerp(Color(1.0, 0.74, 0.48), smoothstep(0.0, 0.16, e)).lerp(Color(1.0, 0.95, 0.88), smoothstep(0.22, 0.6, e))
 	sun.shadow_enabled = sun.light_energy > 0.02
 	sun.light_volumetric_fog_energy = 1.0 + 1.5 * (1.0 - smoothstep(0.1, 0.4, e))
 	# Moonlight: dim and blue, enough to read the farm by, with soft shadows
 	# once the sun's are off.
 	var night := 1.0 - smoothstep(0.0, 0.35, daylight)
 	moon.light_energy = 0.22 * night * (1.0 - 0.8 * s)
-	moon.shadow_enabled = moon.light_energy > 0.05 and not sun.shadow_enabled
+	moon.shadow_enabled = moon_shadows and moon.light_energy > 0.05 and not sun.shadow_enabled
 	moon.visible = moon.light_energy > 0.001
 
 	# Sky light: a bright overcast-ish humid sky by day, warm and lower at
 	# dusk, dim blue at night; storms darken it, lightning flashes it.
-	env.ambient_light_energy = (0.25 + lerpf(0.2, 0.35, smoothstep(0.0, 0.45, e)) * daylight) * (1.0 + 0.3 * s) + flash * 1.5
+	# Kept low by day so the sun still models the shapes (SSIL adds the
+	# bounce); a little higher at night so moonlit water and walls read.
+	var amb := lerpf(0.32, 0.15 + lerpf(0.15, 0.25, smoothstep(0.0, 0.45, e)), daylight)
+	env.ambient_light_energy = amb * (1.0 + 0.6 * s) + flash * 1.5
 	# Eyes adapt: AgX maps mid grey 1:1 (no ACES bias), so day exposure is
 	# ~1.3; lift it at night so the farm stays playable by moonlight.
 	env.tonemap_exposure = lerpf(2.0, 1.2, smoothstep(0.0, 0.4, daylight)) * lerpf(1.0, 1.15, s)
 	# Scotopic vision: colours drain at night.
-	env.adjustment_saturation = lerpf(0.85, 1.08, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
+	env.adjustment_saturation = lerpf(0.85, 1.15, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
 
 	# Haze: morning mist that burns off by ~9:00, humid day haze, dense rain
 	# haze in storms. Fog colour is only 20 % of the look (aerial perspective
@@ -1194,18 +1220,20 @@ func _update_sky() -> float:
 	var evening := smoothstep(18.0, 21.0, h) + (1.0 - smoothstep(1.0, 4.0, h))
 	var fog_c := Color(0.08, 0.1, 0.15).lerp(Color(0.80, 0.84, 0.87), daylight)
 	# Golden hour: from mid-afternoon the haze itself turns warm.
-	var gold := (1.0 - smoothstep(0.12, 0.45, e)) * smoothstep(-0.02, 0.04, elev)
-	fog_c = fog_c.lerp(Color(0.98, 0.8, 0.6), maxf(dusk * 0.7, gold * 0.6)).lerp(Color(0.45, 0.48, 0.5), s * 0.85)
+	var gold := (1.0 - smoothstep(0.18, 0.5, e)) * smoothstep(-0.02, 0.04, elev)
+	fog_c = fog_c.lerp(Color(0.98, 0.8, 0.6), maxf(dusk * 0.7, gold * 0.8)).lerp(Color(0.45, 0.48, 0.5), s * 0.85)
 	sky_mat.set_shader_parameter("gold", gold * (1.0 - s))
 	if flash > 0.0:
 		fog_c = fog_c.lerp(Color("dde6ff"), flash)
 	env.fog_light_color = fog_c
-	env.fog_density = lerpf(lerpf(0.003, 0.006, morning), 0.018, s)
+	env.fog_density = lerpf(lerpf(0.0018, 0.006, morning), 0.018, s)
 	env.fog_sun_scatter = 0.15 + 0.25 * dusk
 	# Ground mist over the paddies (volumetric, thins with height).
 	var fm: FogMaterial = mist.material
 	fm.density = 0.014 * morning + 0.008 * clampf(evening, 0.0, 1.0) * (1.0 - daylight) + 0.01 * s
 	mist.visible = fm.density > 0.001
+	# The froxel pass costs 1-2 ms: run it only while there is mist to show.
+	env.volumetric_fog_enabled = vol_allowed and mist.visible
 
 	# Porch lamp: on from dusk until morning.
 	var lamp_on := 1.0 - smoothstep(0.15, 0.6, daylight)
@@ -1213,12 +1241,12 @@ func _update_sky() -> float:
 	lamp.visible = lamp_on > 0.01
 	lamp_glass.emission_energy_multiplier = 30.0 * lamp_on
 
-	# The reflection probe re-renders when the light changes: every half
-	# game hour, and when a storm comes or goes. After a time jump (sleep,
+	# The reflection probe re-renders when the light changes: every game
+	# hour (15 real seconds), and when a storm comes or goes. After a time jump (sleep,
 	# debug skip) it renders whole in one frame instead of over six.
-	var key := int(minutes / 30.0) * 8 + int(s * 4.0 + 0.5)
+	var key := int(minutes / 60.0) * 8 + int(s * 4.0 + 0.5)
 	if key != _probe_key:
-		var jump := absi(key - _probe_key) > 8 * 2 or _probe_key < 0
+		var jump := absi(key - _probe_key) > 8 or _probe_key < 0
 		_probe_key = key
 		probe.position.y = 11.0 + 0.001 * float(key % 2)
 		if jump:

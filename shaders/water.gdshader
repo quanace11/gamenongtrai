@@ -68,7 +68,9 @@ void fragment() {
 	vec3 n1 = texture(wave_a, p * 0.6 + wd * t * 0.02).xyz * 2.0 - 1.0;
 	vec3 n2 = texture(wave_b, p * 1.3 - vec2(t * 0.017, -t * 0.021)).xyz * 2.0 - 1.0;
 	vec2 slope = (n1.xy + n2.xy) * (0.05 + 0.04 * wind_gust);
-	slope += ripples(wpos.xz, TIME) * rain_amount * 0.35;
+	if (rain_amount > 0.0) {
+		slope += ripples(wpos.xz, TIME) * rain_amount * 0.35;
+	}
 	vec3 nm = normalize(vec3(slope, 1.0));
 	NORMAL_MAP = nm * 0.5 + 0.5;
 	NORMAL_MAP_DEPTH = 1.0;

@@ -57,6 +57,7 @@ func _ready() -> void:
 	# gets screen-space reflections); it only needs gentle ripple normals.
 	_soil_mat.set_shader_parameter("wave_a", _ripple_texture(5))
 	_soil_mat.set_shader_parameter("wave_b", _ripple_texture(11))
+	_soil_mat.set_shader_parameter("floor_y", L.FIELD.y)
 	_soil = MeshInstance3D.new()
 	_soil.material_override = _soil_mat
 	_soil.position.y = L.FIELD.y

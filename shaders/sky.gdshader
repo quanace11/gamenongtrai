@@ -20,8 +20,8 @@ uniform float gold = 0.0; // golden hour: the low sun warms the whole hazy sky
 uniform float storm = 0.0;
 uniform float flash = 0.0; // lightning
 uniform float drift = 0.0; // tiny cloud wobble, in turns
-uniform float night_gain = 0.04;
-uniform float humid = 1.0; // milky, desaturated tropical haze
+uniform float night_gain = 0.06;
+uniform float humid = 0.6; // milky, desaturated tropical haze
 uniform float day_gain = 0.8; // the day HDRIs are bright all round: keep sun/sky contrast
 uniform float mist_gain = 0.8;
 uniform float glow_gain = 0.8; // warm aureole of a low sun in wet air
@@ -77,7 +77,7 @@ void sky() {
 	// horizon that the fog and the far karst melt into.
 	float l = dot(day, vec3(0.2126, 0.7152, 0.0722));
 	day = mix(day, vec3(l) * vec3(0.97, 0.99, 1.03), 0.15 * humid);
-	float low = pow(1.0 - clamp(EYEDIR.y, 0.0, 1.0), 6.0);
+	float low = pow(1.0 - clamp(EYEDIR.y, 0.0, 1.0), 10.0);
 	day = mix(day, haze_col * max(l, 0.85 * day_gain), low * 0.4 * humid);
 
 	day *= mix(vec3(1.0), vec3(1.1, 0.95, 0.78), gold);

@@ -26,15 +26,17 @@ uniform float tile = 2.5;
 uniform float wet = 0.0; // 0 dry field .. 1 flooded
 // Albedo calibration. The cracked-earth photo averages a salmon (0.63, 0.40,
 // 0.23) linear; dry Red River silt is a grey-brown of about 0.2-0.27.
-uniform vec3 dry_tint = vec3(0.46, 0.50, 0.56);
+uniform vec3 dry_tint = vec3(0.42, 0.50, 0.60);
 uniform vec3 till_tint = vec3(0.95, 1.1, 1.35);
 uniform vec3 mud_tint = vec3(1.0, 1.0, 1.05);
 
 // Water: world height of the surface (-10 = dry), the silt colour of the
 // water body and how fast it swallows the mud below (per metre).
 uniform float water_y = -10.0;
-uniform vec3 silt : source_color = vec3(0.10, 0.095, 0.07);
-uniform float murk = 28.0;
+// Red River paddy water is ochre-olive and shows the mud through a few cm.
+uniform vec3 silt : source_color = vec3(0.17, 0.14, 0.09);
+uniform float murk = 9.0;
+uniform float floor_y = -10.0; // the field floor; the skirt sees water down to it
 uniform sampler2D wave_a : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D wave_b : hint_normal, filter_linear_mipmap, repeat_enable;
 
@@ -105,13 +107,17 @@ void fragment() {
 
 	// --- water -------------------------------------------------------------
 	// Anti-aliased waterline from the screen-space change of the depth.
-	float sub = clamp(depth / max(fwidth(depth) * 1.5, 1e-4) + 0.5, 0.0, 1.0);
+	// The skirt walls are vertical, so there the fwidth edge would smear
+	// along the wall; they get a hard edge (the bund face hides it).
+	float sub = skirt ? step(0.0, depth) : clamp(depth / max(fwidth(depth) * 1.5, 1e-4) + 0.5, 0.0, 1.0);
 	vec3 cam = CAMERA_POSITION_WORLD;
 	vec3 V = normalize(cam - wpos);
 	// Murky water: the refracted ray's path to the mud (Snell, n = 1.333).
 	float cosi = max(V.y, 0.05);
 	float sint = sqrt(1.0 - cosi * cosi) / 1.333;
-	float path = max(depth, 0.0) / sqrt(1.0 - sint * sint);
+	// On the skirt the view ray goes on to the field floor, not to the wall.
+	float path_depth = skirt ? max(water_y - floor_y, 0.0) : max(depth, 0.0);
+	float path = path_depth / sqrt(1.0 - sint * sint);
 	float T = exp(-murk * path);
 	vec3 under = soil * T + silt * (1.0 - T);
 
@@ -124,7 +130,9 @@ void fragment() {
 	vec3 n1 = texture(wave_a, p * 0.23 + wd * tm * 0.015).xyz * 2.0 - 1.0;
 	vec3 n2 = texture(wave_b, p * 0.61 - vec2(tm * 0.011, -tm * 0.017)).xyz * 2.0 - 1.0;
 	vec2 slope = (n1.xy + n2.xy * 0.6) * (0.012 + 0.05 * gust);
-	slope += ripples(p, tm) * rain_amount * 0.22;
+	if (rain_amount > 0.0) {
+		slope += ripples(p, tm) * rain_amount * 0.22;
+	}
 	vec2 pd = p - player_pos.xz;
 	float pr = length(pd);
 	if (pr < 3.0 && player_pos.y < water_y) {
@@ -150,7 +158,10 @@ void fragment() {
 	ALBEDO = mix(soil, under, sub);
 	AO = mix(o.r, 1.0, sub);
 	AO_LIGHT_AFFECT = mix(0.3, 0.0, sub);
-	ROUGHNESS = mix(soil_rough, 0.035 + 0.05 * rain_amount + 0.035 * gust, sub);
+	// A touch rougher far off: SSR there only finds the tops of things (the
+	// house roof), and the blur hides that the walls are missing.
+	float far_r = 0.03 * smoothstep(10.0, 25.0, length(cam - wpos));
+	ROUGHNESS = mix(soil_rough, 0.035 + 0.05 * rain_amount + 0.035 * gust + far_r, sub);
 	SPECULAR = mix(0.5, 0.354, sub); // water: F0 = 0.16 * 0.354^2 = 0.02
 	METALLIC = 0.0;
 	// The skirt only exists to carry the water surface in front of the
