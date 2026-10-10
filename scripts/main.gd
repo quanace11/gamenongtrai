@@ -1401,6 +1401,7 @@ func _update_visuals(dt: float) -> void:
 			tp.position.y = court.max_height() + 0.12 + sin(real_t * 9.0) * amp
 			tp.rotation.x = sin(real_t * 7.0) * amp * 0.5
 			tp.rotation.z = sin(real_t * 5.3) * amp * 0.5
+	world.tarp_lines.visible = stage == "drying"
 	for i in 4:
 		world.corner_bricks[i].visible = tarp_placed[i]
 		world.corner_marks[i].visible = tarp_on and not tarp_placed[i]
