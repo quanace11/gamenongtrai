@@ -300,8 +300,8 @@ static func grain_texture() -> ImageTexture:
 			for g in n:
 				var side := -1.0 if g % 2 == 0 else 1.0
 				var cy := (g + 0.5) / n
-				var dy := (v - cy) / 0.055
-				var dx := (u - side * 0.26) / 0.24
+				var dy := (v - cy) / 0.052
+				var dx := (u - side * 0.26) / 0.21
 				var d := dx * dx + dy * dy
 				if d < 1.0:
 					best = 1.0

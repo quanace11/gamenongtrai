@@ -33,7 +33,7 @@ uniform vec3 c_straw : source_color = vec3(0.80, 0.71, 0.46);
 uniform vec3 c_tip : source_color = vec3(0.62, 0.52, 0.34);
 uniform vec3 c_chlorotic : source_color = vec3(0.76, 0.72, 0.32);
 uniform vec3 c_grain_green : source_color = vec3(0.56, 0.64, 0.26);
-uniform vec3 c_grain_gold : source_color = vec3(0.84, 0.70, 0.40);
+uniform vec3 c_grain_gold : source_color = vec3(0.80, 0.68, 0.42);
 uniform vec3 c_mud_water : source_color = vec3(0.15, 0.13, 0.08);
 
 varying vec4 v_state;
@@ -81,7 +81,7 @@ void fragment() {
 		col = mix(c_grain_green, c_grain_gold, smoothstep(0.1, 0.85, mat));
 		// flowering (trổ bông): pale cream-green spikelets with white anthers,
 		// so the fresh panicles stand out of the leaves
-		vec3 cream = mix(pow(vec3(0.70, 0.74, 0.48), vec3(2.2)), c_grain_green, 0.4);
+		vec3 cream = mix(pow(vec3(0.70, 0.74, 0.48), vec3(2.2)), c_grain_green, 0.55);
 		col = mix(cream, col, smoothstep(0.02, 0.2, mat));
 		col *= 0.9 + 0.2 * fract(rnd * 3.7 + v_state.z);
 		// a few darker, rust-tinged grains (about 5 %)
@@ -97,7 +97,7 @@ void fragment() {
 		float sen = clamp(mat * (0.78 + 0.6 * rank) + (t - 0.55) * 0.6 * mat - 0.08, 0.0, 1.0);
 		// at full ripeness even the flag leaf is at least half straw: real
 		// ripe paddies read pale gold, not gold with green spikes
-		float senw = max(smoothstep(0.12, 0.85, sen), 0.55 * smoothstep(0.7, 0.9, mat));
+		float senw = max(smoothstep(0.12, 0.95, sen), 0.55 * smoothstep(0.7, 0.9, mat));
 		col = mix(col, c_straw * (0.92 + 0.16 * rnd), senw);
 		// dry tips: transplant shock on seedlings, age on ripe rice
 		float tipdry = max(0.25 + 0.75 * sen, (1.0 - smoothstep(0.0, 0.12, stage)) * step(0.55, fract(rnd * 5.3)));
@@ -120,7 +120,7 @@ void fragment() {
 	col = mix(col, c_mud_water + col * 0.15, under);
 #ifdef PANICLE_PASS
 	vec4 g = texture(grain_tex, UV);
-	col *= g.r * 1.25;
+	col *= g.r * 1.15;
 	ALPHA = g.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.5;
 #endif
