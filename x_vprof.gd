@@ -8,7 +8,7 @@ func _prims() -> int:
 	for i in 3:
 		await process_frame
 	return int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME))
-func _set(lod: int, on: bool) -> void:
+func _vis(lod: int, on: bool) -> void:
 	for ch in m.field._rice._chunks.values():
 		for i in 7:
 			var l := 0 if i < 2 else (1 if i < 4 else 2)
@@ -28,16 +28,22 @@ func _go() -> void:
 	await m._look_at(-8.3, 2.0, -4.0, 1.0, -0.2)
 	await m._set_time(16.6)
 	print("PROF all ", await _prims())
-	_set(0, false)
+	_vis(0, false)
 	print("PROF no lod0 ", await _prims())
-	_set(1, false)
+	_vis(1, false)
 	print("PROF no lod0,1 ", await _prims())
-	_set(2, false)
+	_vis(2, false)
 	print("PROF no rice ", await _prims())
+	var lawn = m.find_child("Lawn", true, false)
+	lawn.visible = false
+	print("PROF no rice no lawn ", await _prims())
+	for n in m.find_children("*", "MultiMeshInstance3D", true, false):
+		(n as Node3D).visible = false
+	print("PROF no multimeshes ", await _prims())
 	m.sun.shadow_enabled = false
 	print("PROF no rice no sun shadow ", await _prims())
 	m.sun.shadow_enabled = true
-	_set(0, true); _set(1, true); _set(2, true)
+	_vis(0, true); _vis(1, true); _vis(2, true)
 	m.sun.shadow_enabled = false
 	print("PROF rice, no sun shadow ", await _prims())
 	OS.kill(OS.get_process_id())

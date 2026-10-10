@@ -18,7 +18,7 @@ const VARIANTS := [2, 2, 1] # meshes per level of detail
 # lod 0 ends, lod 1 ends (metres). Kept short: with 3 x 3 hills per clump
 # a ripe paddy holds ~5,600 hills, and every lod-0 hill (~2.2 k triangles)
 # is drawn in the depth prepass, the colour pass and the shadow cascades.
-const BASE_RANGES := [3.2, 9.0]
+const BASE_RANGES := [2.2, 8.0]
 
 var sub := 3
 var ranges: Array = BASE_RANGES.duplicate()

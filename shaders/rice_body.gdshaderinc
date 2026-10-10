@@ -26,11 +26,11 @@ uniform float stress = 0.0;          // yellowing from pests and poor health
 uniform vec3 c_young : source_color = vec3(0.56, 0.70, 0.25);
 uniform vec3 c_lush : source_color = vec3(0.25, 0.47, 0.10);
 uniform vec3 c_sheath : source_color = vec3(0.66, 0.72, 0.44);
-uniform vec3 c_straw : source_color = vec3(0.80, 0.66, 0.34);
+uniform vec3 c_straw : source_color = vec3(0.76, 0.65, 0.38);
 uniform vec3 c_tip : source_color = vec3(0.55, 0.42, 0.23);
 uniform vec3 c_chlorotic : source_color = vec3(0.76, 0.72, 0.32);
 uniform vec3 c_grain_green : source_color = vec3(0.56, 0.64, 0.26);
-uniform vec3 c_grain_gold : source_color = vec3(0.85, 0.65, 0.26);
+uniform vec3 c_grain_gold : source_color = vec3(0.80, 0.63, 0.30);
 uniform vec3 c_mud_water : source_color = vec3(0.15, 0.13, 0.08);
 
 varying vec4 v_state;
