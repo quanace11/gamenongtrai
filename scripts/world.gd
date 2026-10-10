@@ -1206,23 +1206,23 @@ static func _plants(root: Node3D) -> void:
 			ferns.append([Vector3(f.x, L.ground_y(f.x, f.y), f.y), rng.randf() * TAU, rng.randf_range(1.5, 2.5)])
 	var walls: Array = L.BLOCKERS.duplicate()
 	walls.append([L.DUCK_PEN.x0, L.DUCK_PEN.x1, L.DUCK_PEN.z0, L.DUCK_PEN.z1])
-	for b in walls:
-		var per: float = 2.0 * ((b[1] - b[0]) + (b[3] - b[2]))
+	for rc in walls:
+		var per: float = 2.0 * ((rc[1] - rc[0]) + (rc[3] - rc[2]))
 		for k in int(per / 2.5):
 			# a point on the rectangle's outline, 15-35 cm outside it
 			var u := rng.randf() * per
 			var o := rng.randf_range(0.15, 0.35)
 			var q: Vector2
-			var w: float = b[1] - b[0]
-			var h: float = b[3] - b[2]
+			var w: float = rc[1] - rc[0]
+			var h: float = rc[3] - rc[2]
 			if u < w:
-				q = Vector2(b[0] + u, b[2] - o)
+				q = Vector2(rc[0] + u, rc[2] - o)
 			elif u < w + h:
-				q = Vector2(b[1] + o, b[2] + u - w)
+				q = Vector2(rc[1] + o, rc[2] + u - w)
 			elif u < 2.0 * w + h:
-				q = Vector2(b[1] - (u - w - h), b[3] + o)
+				q = Vector2(rc[1] - (u - w - h), rc[3] + o)
 			else:
-				q = Vector2(b[0] - o, b[3] - (u - 2.0 * w - h))
+				q = Vector2(rc[0] - o, rc[3] - (u - 2.0 * w - h))
 			if L.in_court(q.x, q.y) or L.blocked(q.x, q.y) or L.in_field(q.x, q.y, L.FIELD.bund + 0.3):
 				continue
 			weeds.append([Vector3(q.x, L.ground_y(q.x, q.y), q.y), rng.randf() * TAU, rng.randf_range(2.0, 3.0)])
