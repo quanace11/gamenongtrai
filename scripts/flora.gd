@@ -13,6 +13,7 @@ const CULM = preload("res://shaders/bamboo_culm.gdshader")
 const FROND = preload("res://shaders/frond.gdshader")
 const SPRAY_TEX = preload("res://assets/textures/veg/bamboo_spray.png")
 const BANANA_TEX = preload("res://assets/textures/veg/banana_leaf.png")
+const TREE_QUALITY = preload("res://scripts/tree_quality.gd")
 
 # Bamboo LOD switch distances (m) and the number of cached grove shapes.
 const BAMBOO_LOD := [26.0, 75.0]
@@ -23,6 +24,7 @@ const LOD_MARGIN := 4.0
 static var _mats := {}
 static var _meshes := {}
 static var _wind: NoiseTexture2D
+static var _quality: Node
 
 
 # Seamless gust noise shared by every plant shader (rice, lawn, bamboo):
@@ -146,7 +148,15 @@ static func _instance(parent: Node3D, mesh: Mesh, pos: Vector3, yaw := 0.0, scal
 	return mi
 
 
+# Distance LOD with a short cross-fade. Registered with the tree quality
+# node so Low and Medium can pull the switch distances in.
 static func _lod_range(gi: GeometryInstance3D, begin: float, end: float) -> void:
+	if _quality == null or not is_instance_valid(_quality):
+		_quality = TREE_QUALITY.new()
+		_quality.name = "TreeQuality"
+		gi.add_sibling.call_deferred(_quality)
+	_quality.nodes.append(gi)
+	gi.set_meta("lod_range", Vector2(begin, end))
 	gi.visibility_range_begin = begin
 	gi.visibility_range_begin_margin = LOD_MARGIN if begin > 0.0 else 0.0
 	gi.visibility_range_end = end
@@ -238,7 +248,8 @@ static func _card(b: Buf, p: Vector3, dir: Vector3, length: float, width: float,
 # down (the fountain silhouette of a village hedge). Branches grow at the
 # nodes of the upper 60 % and end in leaf sprays of 6-12 leaves 10-25 cm long.
 # lod 0: full (~30 k triangles); 1: coarser culms, no branch wood, two bigger
-# sprays per branch (~6 k); 2: far tree lines (~2 k). Every LOD draws the same
+# sprays per branch (~7 k); 2: beyond 75 m and shadow proxy (~3.6 k); 3: the
+# far villages (~1.3 k, a third of the culms, big sprays). Every LOD draws the same
 # random numbers, so the culms keep their shape when the LOD switches.
 static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 	var key := "bamboo%d_%d" % [variant, lod]
@@ -250,8 +261,8 @@ static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 	rng.seed = variant * 7919 + 13
 	var culms := rng.randi_range(40, 52)
 	var crown := Vector3(0.0, 6.0, 0.0)
-	var segs: int = [14, 8, 5][lod]
-	var sides: int = [7, 5, 4][lod]
+	var segs: int = [14, 8, 5, 4][lod]
+	var sides: int = [7, 5, 4, 3][lod]
 	var bid := 0
 	for k in culms:
 		var r := RandomNumberGenerator.new()
@@ -276,7 +287,9 @@ static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 		var age := r.randf()
 		var col := Color(r.randf_range(0.85, 1.08), r.randf() * 0.5, age, 0.0)
 		var ph := r.randf()
-		_tube(wood, pts, r.randf_range(0.035, 0.05), 0.012, sides, col, Vector2(0.0, 1.0), Vector2(0.0, ph), Vector2(0.0, ph))
+		var cr := r.randf_range(0.035, 0.05)
+		if lod < 3 or k % 3 == 0: # culms are sub-pixel in the far villages
+			_tube(wood, pts, cr, 0.012, sides, col, Vector2(0.0, 1.0), Vector2(0.0, ph), Vector2(0.0, ph))
 		# Branches at the nodes, alternating sides: short twiggy ones low down
 		# (the thorny tangle of tre gai), long leafy ones in the upper 60 %.
 		var node := r.randf_range(0.3, 0.42)
@@ -315,10 +328,10 @@ static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 				var tint := Color(1, 1, 1).lerp(Color(0.82, 0.97, 0.7), r.randf())
 				if r.randf() < 0.07:
 					tint = Color(1.0, 0.9, 0.5) # a yellowing spray
-				var keep := lod == 0 or (lod == 1 and (j == cards - 1 or j == (cards - 1) / 2)) or (lod == 2 and j == cards - 1)
+				var keep := lod == 0 or (lod == 1 and (j == cards - 1 or j == (cards - 1) / 2)) or (lod == 2 and j == cards - 1) or (lod == 3 and j == cards - 1 and bid % 3 == 0)
 				if not keep:
 					continue
-				var grow: float = [1.0, 1.6, 2.5 if not low else 1.6][lod]
+				var grow: float = [1.0, 1.6, 2.5 if not low else 1.6, 4.0 if not low else 2.6][lod]
 				# Sprays deep inside the clump are darker (light reaches them through the canopy).
 				var cp := bp + bdir * blen * g + bend * g * g
 				tint = tint.darkened(0.3 * (1.0 - clampf(Vector2(cp.x, cp.z).length() / 4.5, 0.0, 1.0)) + (0.15 if low else 0.0))
@@ -333,20 +346,18 @@ static func bamboo_mesh(variant: int, lod: int) -> ArrayMesh:
 
 
 # A grove: one node per LOD, switched by distance with a short cross-fade.
-# `far` groves (tree lines beyond ~60 m) get only the cheapest LOD.
-static func bamboo(parent: Node3D, pos: Vector3, rng: RandomNumberGenerator, scale := 1.0, far := false) -> void:
+# Shadows come from a separate LOD 2 proxy (same culms, same leaf coverage,
+# a tenth of the triangles): the dappled shadow is soft anyway.
+static func bamboo(parent: Node3D, pos: Vector3, rng: RandomNumberGenerator, scale := 1.0) -> void:
 	var v := rng.randi() % BAMBOO_VARIANTS
 	var yaw := rng.randf() * TAU
-	for lod in range(2 if far else 0, 3):
+	for lod in 3:
 		var mi := _instance(parent, bamboo_mesh(v, lod), pos, yaw, scale)
-		_lod_range(mi, 0.0 if lod == 0 or far else BAMBOO_LOD[lod - 1], BAMBOO_LOD[lod] if lod < 2 else 0.0)
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if lod == 1 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	if not far:
-		# The near LOD is 6x heavier; its shadow is drawn by the middle LOD,
-		# which has the same culms and the same leaf coverage.
-		var sh := _instance(parent, bamboo_mesh(v, 1), pos, yaw, scale)
-		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
-		_lod_range(sh, 0.0, BAMBOO_LOD[0])
+		_lod_range(mi, 0.0 if lod == 0 else BAMBOO_LOD[lod - 1], BAMBOO_LOD[lod] if lod < 2 else 0.0)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var sh := _instance(parent, bamboo_mesh(v, 2), pos, yaw, scale)
+	sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	_lod_range(sh, 0.0, BAMBOO_LOD[1])
 
 
 # ---------------------------------------------------------------- banana
@@ -625,6 +636,10 @@ static func palm(parent: Node3D, pos: Vector3, rng: RandomNumberGenerator, cocon
 	if not far:
 		var near := _instance(parent, palm_mesh(v, coconut, 0), pos, yaw)
 		_lod_range(near, 0.0, PALM_LOD)
+		near.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var sh := _instance(parent, palm_mesh(v, coconut, 1), pos, yaw)
+		sh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		_lod_range(sh, 0.0, PALM_LOD)
 	var mi := _instance(parent, palm_mesh(v, coconut, 1), pos, yaw)
 	_lod_range(mi, 0.0 if far else PALM_LOD, 0.0)
 	if far:

@@ -718,7 +718,7 @@ static func _village(root: Node3D, c: Vector2, rad: float, rng: RandomNumberGene
 		var a := (i % n + (0.5 if i >= n else 0.0) + rng.randf_range(-0.3, 0.3)) / n * TAU
 		var r: float = r_at.call(a) + rng.randf_range(-1.5, 1.5) - (4.0 if i >= n else 0.0)
 		var s := rng.randf_range(0.8, 1.2)
-		items.append([F.bamboo_mesh(rng.randi() % F.BAMBOO_VARIANTS, 2), Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), Vector3(c.x + cos(a) * r, 0.0, c.y + sin(a) * r))])
+		items.append([F.bamboo_mesh(rng.randi() % F.BAMBOO_VARIANTS, 3), Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), Vector3(c.x + cos(a) * r, 0.0, c.y + sin(a) * r))])
 	# fruit trees, areca and coconut palms inside, above the bamboo
 	for i in int(rad * 0.8):
 		var a := rng.randf() * TAU

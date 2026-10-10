@@ -55,3 +55,15 @@ Texture ở độ phân giải 1k (albedo, normal OpenGL, ARM). Texture của m�
 ## Tự làm bằng code
 
 Tre, chuối, cau, dừa, cỏ, khóm lúa, trâu, lợn, vịt, núi đá vôi, nước và mặt ruộng xa được dựng bằng GDScript và shader trong `scripts/flora.gd`, `scripts/world.gd` và `shaders/`, vì thư viện CC0 chưa có các mẫu mang dáng làng quê Việt Nam. Âm thanh vẫn được tổng hợp bằng code (`scripts/audio.gd`).
+
+<!-- TREES: begin -->
+## Giấy phép CC-BY 4.0 (bắt buộc ghi công)
+
+| Asset | Tác giả | Nguồn | Giấy phép | Dùng cho |
+|---|---|---|---|---|
+| "bamboo" (chỉ lấy texture cành lá `Tree_1Mat_baseColor.png`) | [evolveduk](https://sketchfab.com/evolveduk) | [sketchfab.com/3d-models/bamboo-a02bf0e3ffe44617ad49daf3cd94fe59](https://sketchfab.com/3d-models/bamboo-a02bf0e3ffe44617ad49daf3cd94fe59) | [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/) | `assets/textures/veg/bamboo_spray.png`: chùm lá tre của lũy tre và tán cây làng xa |
+
+This work is based on "bamboo" (https://sketchfab.com/3d-models/bamboo-a02bf0e3ffe44617ad49daf3cd94fe59) by evolveduk (https://sketchfab.com/evolveduk) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Đã sửa: xoay cành cho thẳng đứng, cắt, chồng thêm một bản lật gương cho dày (`tools/make_veg_textures.py`).
+
+Lá chuối (`assets/textures/veg/banana_leaf.png`) được vẽ bằng `tools/make_veg_textures.py` (CC0).
+<!-- TREES: end -->

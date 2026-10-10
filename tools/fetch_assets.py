@@ -32,3 +32,11 @@ for m in mods:
   dl(g['url'], f'{root}/models/{m}/{m}_1k.gltf')
   for rel,v in g['include'].items(): dl(v['url'], f'{root}/models/{m}/{rel}')
   print('model',m,flush=True)
+# --- TREES: begin ---
+# Bamboo twig texture, CC-BY 4.0 "bamboo" by evolveduk (see assets/CREDITS.md),
+# turned into assets/textures/veg/bamboo_spray.png by tools/make_veg_textures.py.
+import tempfile
+twig=os.path.join(tempfile.gettempdir(), 'gamenongtrai_bamboo_twig.png') # outside the project, so Godot does not import it
+dl('https://raw.githubusercontent.com/x-c-o/godot-stg/HEAD/shootinggame1/assets/models/bamboo/textures/Tree_1Mat_baseColor.png', twig)
+print('cc-by bamboo twig ->', twig, '(run: python3 tools/make_veg_textures.py', twig + ')', flush=True)
+# --- TREES: end ---
