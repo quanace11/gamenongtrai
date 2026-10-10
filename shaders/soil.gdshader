@@ -26,14 +26,14 @@ uniform float tile = 2.5;
 uniform float wet = 0.0; // 0 dry field .. 1 flooded
 // Albedo calibration. The cracked-earth photo averages a salmon (0.63, 0.40,
 // 0.23) linear; dry Red River silt is a grey-brown of about 0.2-0.27.
-uniform vec3 dry_tint = vec3(0.42, 0.50, 0.62);
+uniform vec3 dry_tint = vec3(0.46, 0.50, 0.56);
 uniform vec3 till_tint = vec3(0.95, 1.1, 1.35);
 uniform vec3 mud_tint = vec3(1.0, 1.0, 1.05);
 
 // Water: world height of the surface (-10 = dry), the silt colour of the
 // water body and how fast it swallows the mud below (per metre).
 uniform float water_y = -10.0;
-uniform vec3 silt : source_color = vec3(0.28, 0.26, 0.2);
+uniform vec3 silt : source_color = vec3(0.17, 0.16, 0.12);
 uniform float murk = 28.0;
 uniform sampler2D wave_a : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D wave_b : hint_normal, filter_linear_mipmap, repeat_enable;

@@ -25,8 +25,9 @@ Texture ở độ phân giải 1k (albedo, normal OpenGL, ARM). Texture của m�
 
 | Asset | Dùng cho |
 |---|---|
-| [kloofendal_48d_partly_cloudy_puresky](https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky) | trời ban ngày |
-| [qwantani_sunset_puresky](https://polyhaven.com/a/qwantani_sunset_puresky) | bình minh / hoàng hôn |
+| [farm_field_puresky](https://polyhaven.com/a/farm_field_puresky) | trời ban ngày: xanh nhạt, mây tích, chân trời mờ hơi nước |
+| [kloofendal_28d_misty_puresky](https://polyhaven.com/a/kloofendal_28d_misty_puresky) | sáng sớm có sương |
+| [rosendal_park_sunset_puresky](https://polyhaven.com/a/rosendal_park_sunset_puresky) | bình minh / hoàng hôn |
 | [qwantani_night_puresky](https://polyhaven.com/a/qwantani_night_puresky) | ban đêm |
 | [kloofendal_overcast_puresky](https://polyhaven.com/a/kloofendal_overcast_puresky) | trời giông |
 

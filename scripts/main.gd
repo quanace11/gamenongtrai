@@ -155,17 +155,20 @@ func _ready() -> void:
 
 
 func _setup_environment() -> void:
-	# Sky: four CC0 HDRI panoramas blended by time of day and storm. The day
-	# sky is a humid, misty one: a bright milky horizon and a soft blue zenith.
+	# Sky: five CC0 HDRI panoramas blended by time of day and storm. The day
+	# sky is a humid one: pale hazy blue with soft cumulus and a milky
+	# horizon; early mornings fade in from a fully misty sky.
 	sky_mat = ShaderMaterial.new()
 	sky_mat.shader = preload("res://shaders/sky.gdshader")
-	sky_mat.set_shader_parameter("day_tex", load("res://assets/hdri/kloofendal_28d_misty_puresky_2k.hdr"))
+	sky_mat.set_shader_parameter("day_tex", load("res://assets/hdri/farm_field_puresky_2k.hdr"))
+	sky_mat.set_shader_parameter("mist_tex", load("res://assets/hdri/kloofendal_28d_misty_puresky_2k.hdr"))
 	sky_mat.set_shader_parameter("dusk_tex", load("res://assets/hdri/rosendal_park_sunset_puresky_1k.hdr"))
 	sky_mat.set_shader_parameter("night_tex", load("res://assets/hdri/qwantani_night_puresky_1k.hdr"))
 	sky_mat.set_shader_parameter("storm_tex", load("res://assets/hdri/kloofendal_overcast_puresky_1k.hdr"))
 	# Where each panorama's own sun is (u, elevation in radians), measured
 	# from the brightest texel, so the shader can turn it onto the real sun.
-	sky_mat.set_shader_parameter("day_sun", Vector2(0.470, deg_to_rad(28.7)))
+	sky_mat.set_shader_parameter("day_sun", Vector2(0.602, deg_to_rad(50.8)))
+	sky_mat.set_shader_parameter("mist_sun", Vector2(0.470, deg_to_rad(28.7)))
 	sky_mat.set_shader_parameter("dusk_sun", Vector2(0.596, deg_to_rad(1.2)))
 	sky_mat.set_shader_parameter("storm_sun", Vector2(0.582, deg_to_rad(23.0)))
 	var sky := Sky.new()
@@ -347,7 +350,7 @@ func _setup_particles() -> void:
 	# light, dark at night), fading at both ends and right in front of the eye.
 	rain = CPUParticles3D.new()
 	var drop := QuadMesh.new()
-	drop.size = Vector2(0.008, 0.6)
+	drop.size = Vector2(0.012, 0.6)
 	var streak := Gradient.new()
 	streak.set_color(0, Color(1, 1, 1, 0))
 	streak.set_color(1, Color(1, 1, 1, 0))
@@ -360,7 +363,7 @@ func _setup_particles() -> void:
 	gt.fill_from = Vector2(0, 0)
 	gt.fill_to = Vector2(0, 1)
 	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(0.82, 0.86, 0.9, 0.3)
+	dm.albedo_color = Color(0.82, 0.86, 0.9, 0.4)
 	dm.albedo_texture = gt
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	dm.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
@@ -1153,6 +1156,7 @@ func _update_sky() -> float:
 	sky_mat.set_shader_parameter("storm", s)
 	sky_mat.set_shader_parameter("flash", flash)
 	sky_mat.set_shader_parameter("drift", sin(real_t * 0.004) * 0.004)
+	sky_mat.set_shader_parameter("morning", smoothstep(3.0, 5.0, h) * (1.0 - smoothstep(6.0, 8.0, h)))
 
 	# Sun path for 21 N in October: rises a little south of east at 6:00,
 	# culminates about 63 deg up in the SOUTH (the house faces it), sets a
@@ -1179,9 +1183,9 @@ func _update_sky() -> float:
 	env.ambient_light_energy = (0.25 + lerpf(0.2, 0.35, smoothstep(0.0, 0.45, e)) * daylight) * (1.0 + 0.3 * s) + flash * 1.5
 	# Eyes adapt: AgX maps mid grey 1:1 (no ACES bias), so day exposure is
 	# ~1.3; lift it at night so the farm stays playable by moonlight.
-	env.tonemap_exposure = lerpf(2.2, 1.05, smoothstep(0.0, 0.6, daylight)) * lerpf(1.0, 1.15, s)
+	env.tonemap_exposure = lerpf(2.0, 1.2, smoothstep(0.0, 0.6, daylight)) * lerpf(1.0, 1.15, s)
 	# Scotopic vision: colours drain at night.
-	env.adjustment_saturation = lerpf(0.6, 1.08, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
+	env.adjustment_saturation = lerpf(0.7, 1.08, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
 
 	# Haze: morning mist that burns off by ~9:00, humid day haze, dense rain
 	# haze in storms. Fog colour is only 20 % of the look (aerial perspective
