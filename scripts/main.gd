@@ -262,7 +262,7 @@ func _setup_environment() -> void:
 	add_child(sun)
 	# The moon is in the south-east sky (+z is south).
 	moon = DirectionalLight3D.new()
-	moon.light_color = Color(0.55, 0.65, 1.0)
+	moon.light_color = Color(0.45, 0.58, 1.0)
 	moon.rotation = Vector3(-1.0, 0.8, 0)
 	moon.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	moon.shadow_enabled = false
@@ -1168,13 +1168,13 @@ func _update_sky() -> float:
 	# deep orange through the thick, humid air instead of fading to grey.
 	var up := smoothstep(-0.02, 0.04, elev)
 	sun.light_energy = (1.0 + 2.0 * smoothstep(0.0, 0.5, e)) * up * (1.0 - 0.85 * s)
-	sun.light_color = Color(1.0, 0.48, 0.2).lerp(Color(1.0, 0.76, 0.52), smoothstep(0.0, 0.14, e)).lerp(Color(1.0, 0.95, 0.88), smoothstep(0.14, 0.5, e))
+	sun.light_color = Color(1.0, 0.48, 0.2).lerp(Color(1.0, 0.74, 0.48), smoothstep(0.0, 0.16, e)).lerp(Color(1.0, 0.95, 0.88), smoothstep(0.22, 0.6, e))
 	sun.shadow_enabled = sun.light_energy > 0.02
 	sun.light_volumetric_fog_energy = 1.0 + 1.5 * (1.0 - smoothstep(0.1, 0.4, e))
 	# Moonlight: dim and blue, enough to read the farm by, with soft shadows
 	# once the sun's are off.
 	var night := 1.0 - smoothstep(0.0, 0.35, daylight)
-	moon.light_energy = 0.3 * night * (1.0 - 0.8 * s)
+	moon.light_energy = 0.22 * night * (1.0 - 0.8 * s)
 	moon.shadow_enabled = moon.light_energy > 0.05 and not sun.shadow_enabled
 	moon.visible = moon.light_energy > 0.001
 
@@ -1185,15 +1185,17 @@ func _update_sky() -> float:
 	# ~1.3; lift it at night so the farm stays playable by moonlight.
 	env.tonemap_exposure = lerpf(2.0, 1.2, smoothstep(0.0, 0.4, daylight)) * lerpf(1.0, 1.15, s)
 	# Scotopic vision: colours drain at night.
-	env.adjustment_saturation = lerpf(0.7, 1.08, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
+	env.adjustment_saturation = lerpf(0.85, 1.08, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
 
 	# Haze: morning mist that burns off by ~9:00, humid day haze, dense rain
 	# haze in storms. Fog colour is only 20 % of the look (aerial perspective
 	# takes the sky colour), so it just keeps the haze bright or dark.
-	var morning := smoothstep(3.0, 5.0, h) * (1.0 - smoothstep(6.0, 8.5, h))
+	var morning := smoothstep(3.0, 5.0, h) * (1.0 - smoothstep(6.3, 8.0, h))
 	var evening := smoothstep(18.0, 21.0, h) + (1.0 - smoothstep(1.0, 4.0, h))
 	var fog_c := Color(0.08, 0.1, 0.15).lerp(Color(0.80, 0.84, 0.87), daylight)
-	fog_c = fog_c.lerp(Color(0.98, 0.78, 0.6), dusk * 0.7).lerp(Color(0.45, 0.48, 0.5), s * 0.85)
+	# Golden hour: from mid-afternoon the haze itself turns warm.
+	var gold := (1.0 - smoothstep(0.12, 0.45, e)) * smoothstep(-0.02, 0.04, elev)
+	fog_c = fog_c.lerp(Color(0.98, 0.8, 0.6), maxf(dusk * 0.7, gold * 0.45)).lerp(Color(0.45, 0.48, 0.5), s * 0.85)
 	if flash > 0.0:
 		fog_c = fog_c.lerp(Color("dde6ff"), flash)
 	env.fog_light_color = fog_c
