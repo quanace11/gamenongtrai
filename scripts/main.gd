@@ -112,7 +112,7 @@ func _ready() -> void:
 	ducks.setup(audio, 10)
 
 	camera = Camera3D.new()
-	camera.near = 0.05
+	camera.near = 0.03 # held tools are pulled toward the eye by z_clip_scale
 	camera.far = 1500
 	add_child(camera)
 	camera.make_current()
