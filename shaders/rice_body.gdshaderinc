@@ -15,6 +15,8 @@ uniform sampler2D grain_tex : filter_linear_mipmap, repeat_disable;
 global uniform float wind_gust;
 global uniform vec2 wind_dir;
 global uniform vec3 player_pos;
+global uniform float wetness;
+global uniform float rain_amount;
 uniform sampler2D noise : filter_linear_mipmap, repeat_enable;
 uniform float stage = 0.45;          // 0 transplant .. 0.45 tillering .. 1 ripe
 uniform float ripe = 0.0;            // 0 green .. 1 golden
@@ -22,15 +24,16 @@ uniform float plant_height = 0.7;    // metres, scales the wind bend
 uniform float water_y = -100.0;      // world y of the paddy water (or far below)
 uniform float stubble = 0.0;         // 1: cut straw
 uniform float stress = 0.0;          // yellowing from pests and poor health
+uniform float aniso = 0.12;          // waxy streak; 0 on the 2-vertex lod-1/2 leaves
 
 uniform vec3 c_young : source_color = vec3(0.56, 0.70, 0.25);
-uniform vec3 c_lush : source_color = vec3(0.25, 0.47, 0.10);
+uniform vec3 c_lush : source_color = vec3(0.20, 0.40, 0.09);
 uniform vec3 c_sheath : source_color = vec3(0.66, 0.72, 0.44);
-uniform vec3 c_straw : source_color = vec3(0.80, 0.66, 0.34);
-uniform vec3 c_tip : source_color = vec3(0.55, 0.42, 0.23);
+uniform vec3 c_straw : source_color = vec3(0.80, 0.71, 0.46);
+uniform vec3 c_tip : source_color = vec3(0.62, 0.52, 0.34);
 uniform vec3 c_chlorotic : source_color = vec3(0.76, 0.72, 0.32);
 uniform vec3 c_grain_green : source_color = vec3(0.56, 0.64, 0.26);
-uniform vec3 c_grain_gold : source_color = vec3(0.85, 0.65, 0.26);
+uniform vec3 c_grain_gold : source_color = vec3(0.80, 0.68, 0.42);
 uniform vec3 c_mud_water : source_color = vec3(0.15, 0.13, 0.08);
 
 varying vec4 v_state;
@@ -46,7 +49,7 @@ void vertex() {
 	float flutter = sin(TIME * (2.4 + 2.6 * COLOR.b) + COLOR.b * 6.2832 + dot(root.xz, wind_dir) * 1.3);
 	// heavy ripe panicles lag and swing more
 	float heavy = step(0.75, COLOR.r) * (0.5 + ripe);
-	float bend = pow(hrel, 1.8) * plant_height * (0.09 * sway * (1.0 + heavy) + 0.018 * flutter);
+	float bend = pow(max(hrel, 0.0), 1.8) * plant_height * (0.09 * sway * (1.0 + heavy) + 0.018 * flutter);
 	// leaf tips flutter on their own
 	bend += UV.y * UV.y * 0.015 * flutter * wind_gust * (1.0 - step(0.25, COLOR.r));
 	vec3 off = vec3(wind_dir.x, 0.0, wind_dir.y) * bend;
@@ -54,7 +57,7 @@ void vertex() {
 	vec2 away = root.xz - player_pos.xz;
 	float pd = max(length(away), 1e-3);
 	float push = (1.0 - smoothstep(0.2, 0.65, pd)) * step(abs(player_pos.y - root.y), 1.2);
-	off.xz += away / pd * push * pow(hrel, 1.5) * plant_height * 0.45;
+	off.xz += away / pd * push * pow(max(hrel, 0.0), 1.5) * plant_height * 0.45;
 	off.y -= 0.5 * dot(off.xz, off.xz) / max(hrel * plant_height, 0.05);
 	// world offset back to model space without a 4x4 inverse (rotation + uniform scale)
 	mat3 m = mat3(MODEL_MATRIX);
@@ -76,14 +79,26 @@ void fragment() {
 	vec3 col;
 	if (organ > 0.75) {
 		col = mix(c_grain_green, c_grain_gold, smoothstep(0.1, 0.85, mat));
+		// flowering (trổ bông): pale cream-green spikelets with white anthers,
+		// so the fresh panicles stand out of the leaves
+		vec3 cream = mix(pow(vec3(0.70, 0.74, 0.48), vec3(2.2)), c_grain_green, 0.55);
+		col = mix(cream, col, smoothstep(0.02, 0.2, mat));
 		col *= 0.9 + 0.2 * fract(rnd * 3.7 + v_state.z);
-		// a few darker, rust-tinged grains
-		col = mix(col, col * vec3(0.8, 0.66, 0.5), smoothstep(0.72, 1.0, fract(rnd * 13.7 + rank * 3.1)) * mat);
+		// a few darker, rust-tinged grains (about 5 %)
+		col = mix(col, col * vec3(0.8, 0.66, 0.5), smoothstep(0.72, 1.0, fract(rnd * 13.7 + rank * 3.1)) * mat * 0.5);
+#ifndef PANICLE_PASS
+		// solid far panicles: match the average shade of the near grain
+		// ribbons (gaps and shaded husks) so the lod change is not a stripe
+		col *= 0.85;
+#endif
 	} else {
 		col = mix(c_sheath, green, organ < 0.25 ? smoothstep(0.0, 0.25, t) : 0.15);
 		// senescence: lower leaves first, from the tip down
-		float sen = clamp(mat * (0.5 + 0.95 * rank) + (t - 0.55) * 0.9 * mat - 0.12, 0.0, 1.0);
-		col = mix(col, c_straw * (0.92 + 0.16 * rnd), smoothstep(0.12, 0.85, sen));
+		float sen = clamp(mat * (0.78 + 0.6 * rank) + (t - 0.55) * 0.6 * mat - 0.08, 0.0, 1.0);
+		// at full ripeness even the flag leaf is at least half straw: real
+		// ripe paddies read pale gold, not gold with green spikes
+		float senw = max(smoothstep(0.12, 0.95, sen), 0.55 * smoothstep(0.7, 0.9, mat));
+		col = mix(col, c_straw * (0.92 + 0.16 * rnd), senw);
 		// dry tips: transplant shock on seedlings, age on ripe rice
 		float tipdry = max(0.25 + 0.75 * sen, (1.0 - smoothstep(0.0, 0.12, stage)) * step(0.55, fract(rnd * 5.3)));
 		col = mix(col, c_tip, smoothstep(0.86, 1.0, t) * tipdry);
@@ -91,7 +106,12 @@ void fragment() {
 		// midrib and fine parallel veins
 		float mid = 1.0 - smoothstep(0.0, 0.12, abs(UV.x - 0.5));
 		col *= (1.0 + 0.1 * mid * (1.0 - step(0.25, organ))) * (0.97 + 0.03 * sin(UV.x * 70.0));
-		col = mix(col, c_straw * mix(0.85, 1.12, t * t), stubble);
+		// stubble: weathered grey-buff straw, darker cut ends soaked at the
+		// base, and now and then a green ratoon shoot (lúa chét)
+		// (literal colours here are sRGB, hence the pow)
+		vec3 straw = pow(mix(vec3(0.52, 0.45, 0.31), vec3(0.66, 0.56, 0.36), fract(rnd * 5.7 + v_state.z)), vec3(2.2)) * mix(0.7, 1.0, t);
+		straw = mix(straw, c_young * 0.85, step(0.88, fract(rnd * 11.3 + v_state.w)) * step(organ, 0.25));
+		col = mix(col, straw, stubble);
 	}
 	// below and just above the water line: wet, darker, muddy
 	float under = 1.0 - smoothstep(water_y - 0.004, water_y + 0.004, v_wy);
@@ -100,15 +120,27 @@ void fragment() {
 	col = mix(col, c_mud_water + col * 0.15, under);
 #ifdef PANICLE_PASS
 	vec4 g = texture(grain_tex, UV);
-	col *= g.r * 1.25;
+	col *= g.r * 1.15;
 	ALPHA = g.a;
 	ALPHA_SCISSOR_THRESHOLD = 0.5;
 #endif
-	ALBEDO = col;
-	ROUGHNESS = mix(0.45, 0.62, max(mat, stubble));
-	SPECULAR = 0.42;
-	ANISOTROPY = 0.4 * (1.0 - under) * (1.0 - step(0.75, organ));
-	BACKLIGHT = col * mix(0.5, 0.28, mat) * (1.0 - under);
+	// Sky-bent or kept normals can face away from the eye on thin blades;
+	// GGX then blows up at grazing angles into HDR fireflies that the glow
+	// smears into white blobs. Keep N.V slightly positive.
+	{
+		float nv = dot(NORMAL, VIEW);
+		NORMAL = normalize(NORMAL + VIEW * max(0.0, 0.12 - nv));
+	}
+	// rain-soaked rice darkens instead of staying saturated
+	ALBEDO = col * mix(1.0, 0.8, max(wetness, rain_amount));
+	// husks are matte; waxy leaves get a soft streak along the blade
+	float grain = step(0.75, organ);
+	// (rougher than a glossy leaf: thin blades at grazing sun otherwise flash
+	// silver-white; real rice has a dull waxy sheen)
+	ROUGHNESS = mix(mix(0.72, 0.8, max(mat, stubble)), 0.85, grain);
+	SPECULAR = mix(0.22, 0.15, grain);
+	ANISOTROPY = aniso * (1.0 - under) * (1.0 - grain);
+	BACKLIGHT = col * mix(0.22, 0.2, mat) * (1.0 - under);
 	AO = mix(0.35, 1.0, smoothstep(0.0, 0.75, COLOR.a));
 	AO_LIGHT_AFFECT = 0.5;
 }

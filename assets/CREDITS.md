@@ -56,6 +56,12 @@ Texture ở độ phân giải 1k (albedo, normal OpenGL, ARM). Texture của m�
 
 Tre, chuối, cau, dừa, cỏ, khóm lúa, trâu, lợn, vịt, núi đá vôi, nước và mặt ruộng xa được dựng bằng GDScript và shader trong `scripts/flora.gd`, `scripts/world.gd` và `shaders/`, vì thư viện CC0 chưa có các mẫu mang dáng làng quê Việt Nam. Âm thanh vẫn được tổng hợp bằng code (`scripts/audio.gd`).
 
+<!-- VEG package -->
+## Lá cắt alpha cho cây Poly Haven (gói VEG)
+
+`fern_02`, `shrub_04`, `nettle_plant`, `weed_plant_02` (CC0, Poly Haven): bản đồ Alpha 1k của chính các mẫu này được ghép vào ảnh màu thành `textures/<id>_diff_1k.png` (RGBA, 512 px) để lá được cắt đúng hình thay vì hiện thành tấm vuông. Cách làm nằm trong `tools/fetch_assets.py` (phần VEG). Cỏ sân, khóm lúa mọi giai đoạn, gốc rạ và vạt mạ được dựng bằng code trong `scripts/grass_lawn.gd`, `scripts/rice_hill.gd`, `scripts/rice_field.gd`, `scripts/flora.gd` và các shader `grass_lawn`, `grass_blade`, `rice*`.
+<!-- /VEG package -->
+
 ## Gói WORLD (địa hình, nhà, núi đá, con vật)
 
 Texture CC0 từ [Poly Haven](https://polyhaven.com) (tải lại bằng `tools/fetch_assets.py`):

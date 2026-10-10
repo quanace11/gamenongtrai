@@ -1601,6 +1601,18 @@ func _run_tour() -> void:
 	await _wait(0.6)
 	await _shot("tour-16-ganh")
 	inv.sheaves = 0
+	# Eye-level rice from the west bund: heading in the morning, then ripe.
+	for c in field.clumps:
+		c.cut = false
+	field.growth_day = 5
+	field.rice_dirty = true
+	await _look_at(-8.3, 2.0, -4.0, 1.0, -0.2)
+	await _set_time(7.5) # low side sun: shadow structure inside the canopy
+	await _shot("tour-17-rice-eye-heading")
+	field.growth_day = 8
+	field.rice_dirty = true
+	await _set_time(16.6)
+	await _shot("tour-18-rice-eye-ripe")
 	get_tree().quit(0)
 
 

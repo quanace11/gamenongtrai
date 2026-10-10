@@ -85,6 +85,7 @@ func _multimesh(mesh: Mesh, count: int) -> MultiMeshInstance3D:
 	var mmi := MultiMeshInstance3D.new()
 	mmi.multimesh = mm
 	mmi.material_override = F.material("blade")
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF # grass casts no shadows
 	add_child(mmi)
 	return mmi
 
