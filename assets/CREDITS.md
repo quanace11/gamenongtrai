@@ -55,3 +55,12 @@ Texture ở độ phân giải 1k (albedo, normal OpenGL, ARM). Texture của m�
 ## Tự làm bằng code
 
 Tre, chuối, cau, dừa, cỏ, khóm lúa, trâu, lợn, vịt, núi đá vôi, nước và mặt ruộng xa được dựng bằng GDScript và shader trong `scripts/flora.gd`, `scripts/world.gd` và `shaders/`, vì thư viện CC0 chưa có các mẫu mang dáng làng quê Việt Nam. Âm thanh vẫn được tổng hợp bằng code (`scripts/audio.gd`).
+
+## Tay người chơi và áo (gói PLAYER)
+
+| Asset | Tác giả · giấy phép | Dùng cho |
+|---|---|---|
+| [Godot XR Tools hand models](https://github.com/GodotVR/godot-xr-tools/tree/master/addons/godot-xr-tools/hands) (`Hand_Nails_R/L.gltf`, textures, grip poses) | DigitalN8m4r3 (Miodrag Sejic), dựng từ MakeHuman · [CC0 1.0](https://raw.githubusercontent.com/GodotVR/godot-xr-tools/master/addons/godot-xr-tools/hands/License.md) (bản sao ở `assets/models/hands/License.md`) | đôi tay cầm dụng cụ; màu da pha giữa hai texture realistic cho nước da nông dân rám nắng |
+| [rough_linen](https://polyhaven.com/a/rough_linen) | colormass, Rico Cilliers · CC0 | ống tay áo nâu xắn lên |
+
+Liềm, cuốc, đòn gánh, quang, lượm lúa và bó mạ được dựng bằng code trong `scripts/tools.gd`.

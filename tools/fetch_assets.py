@@ -32,3 +32,36 @@ for m in mods:
   dl(g['url'], f'{root}/models/{m}/{m}_1k.gltf')
   for rel,v in g['include'].items(): dl(v['url'], f'{root}/models/{m}/{rel}')
   print('model',m,flush=True)
+
+# ---- PLAYER package: first-person hands and sleeve cloth --------------------
+# Hands: CC0 1.0, Godot XR Tools hand models by DigitalN8m4r3 (Miodrag Sejic).
+# hand_r/l.gltf are Hand_Nails_R/L.gltf renamed. The farmer skin texture is a
+# 50/50 mix of the caucasian and african realistic base colours, warmed
+# (x 1.0, 0.95, 0.86) and desaturated to 82 %. poses.json holds the last key
+# of each rotation track of animations/{right,left}/{Grip,Grip Shaft,Hold,
+# Pinch Tight,Cup}.res, exported with Godot (Animation.track_get_key_value).
+XR='https://raw.githubusercontent.com/GodotVR/godot-xr-tools/master/addons/godot-xr-tools/hands/'
+hands=os.path.join(root,'models','hands')
+dl(XR+'License.md', f'{hands}/License.md')
+for side in 'RL':
+  dl(XR+f'model/Hand_Nails_{side}.gltf', f'{hands}/hand_{side.lower()}.gltf')
+for t in ['caucasian_realistic_baseColor.png','african_realistic_baseColor.png','hands_normal.png','hands_occlusionRoughnessMetallic.png']:
+  dl(XR+'textures/'+t, f'{hands}/source/{t}')
+try:
+  from PIL import Image
+  import numpy as np
+  c=np.asarray(Image.open(f'{hands}/source/caucasian_realistic_baseColor.png').convert('RGB')).astype(float)
+  a=np.asarray(Image.open(f'{hands}/source/african_realistic_baseColor.png').convert('RGB')).astype(float)
+  m=(c*0.5+a*0.5)*np.array([1.0,0.95,0.86]); g=m.mean(axis=2,keepdims=True); m=g+(m-g)*0.82
+  os.makedirs(f'{hands}/textures',exist_ok=True)
+  Image.fromarray(np.clip(m,0,255).astype(np.uint8)).save(f'{hands}/textures/hands_farmer_baseColor.jpg',quality=90)
+  Image.open(f'{hands}/source/hands_normal.png').convert('RGB').save(f'{hands}/textures/hands_normal.png',optimize=True)
+  Image.open(f'{hands}/source/hands_occlusionRoughnessMetallic.png').convert('RGB').save(f'{hands}/textures/hands_orm.jpg',quality=90)
+except ImportError:
+  print('install pillow + numpy to rebuild the hand textures')
+print('hands',flush=True)
+f=get('https://api.polyhaven.com/files/rough_linen')
+for k,suf in [('Diffuse','diff'),('nor_gl','nor'),('arm','arm')]:
+  dl(f[k]['1k']['jpg']['url'], f'{root}/textures/rough_linen/rough_linen_{suf}_1k.jpg')
+print('tex rough_linen',flush=True)
+# ---- end PLAYER package ------------------------------------------------------

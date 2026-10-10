@@ -522,7 +522,7 @@ func _build_liem() -> void:
 	var v := Vector3(-1.0, 0.0, -0.75)
 	v = (v - d * v.dot(d)).normalized()
 	_add(m, _sickle_blade(), "iron", Transform3D(Basis(v, d, v.cross(d)), d * 0.15))
-	_hold("liem", "r", Vector3.ZERO, d, Vector3(0.16, -0.16, 0.32))
+	_hold("liem", "r", Vector3.ZERO, d, Vector3(0.26, 0.02, 0.16))
 	# The left hand is free, half open, ready to gather the stalks.
 	_hold("liem", "l", Vector3(-0.44, -0.04, 0.0), Vector3(0.85, 0.5, 0.0), Vector3(-0.5, -0.4, 0.3), "Grip", 0.2)
 
