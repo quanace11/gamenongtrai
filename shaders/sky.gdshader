@@ -18,6 +18,8 @@ uniform float drift = 0.0; // tiny cloud wobble, in turns
 uniform float night_gain = 0.04;
 uniform float humid = 1.0; // milky, desaturated tropical haze
 uniform float day_gain = 0.8; // the misty HDRI is bright all round: keep sun/sky contrast
+uniform float dusk_gain = 0.45; // the sunset HDRI is exposed for a bright horizon: keep it warm, not white
+uniform float dusk_sat = 1.35; // and a little richer, as the long path through wet air reddens it
 // Where the sun is in each panorama: x = u (turns), y = elevation (radians).
 uniform vec2 day_sun = vec2(0.470, 0.50);
 uniform vec2 dusk_sun = vec2(0.596, 0.02);
@@ -43,13 +45,18 @@ vec2 aligned(vec2 uv, vec2 sun_uv, vec2 hdr_sun, float warp) {
 	return uv;
 }
 
+vec3 dusk_col(vec3 c) {
+	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+	return max(mix(vec3(l), c, dusk_sat), vec3(0.0)) * dusk_gain;
+}
+
 void sky() {
 	vec2 uv = SKY_COORDS;
 	vec3 L = LIGHT0_ENABLED ? LIGHT0_DIRECTION : vec3(0.0, 1.0, 0.0);
 	vec2 sun_uv = vec2(fract(atan(L.x, -L.z) / 6.2831853), acos(clamp(L.y, -1.0, 1.0)) / 3.14159265);
 
 	vec3 day = pano(day_tex, aligned(uv, sun_uv, day_sun, day_warp), 2.2) * day_gain;
-	vec3 sunset = pano(dusk_tex, aligned(uv, sun_uv, dusk_sun, 0.0), 6.0);
+	vec3 sunset = dusk_col(pano(dusk_tex, aligned(uv, sun_uv, dusk_sun, 0.0), 6.0));
 	vec3 night = pano(night_tex, uv + vec2(drift, 0.0), 1.0) * night_gain * vec3(0.55, 0.7, 1.0);
 	vec3 grey = pano(storm_tex, aligned(uv, sun_uv, storm_sun, 0.0), 1.6);
 
@@ -77,7 +84,7 @@ void sky() {
 	vec2 hz = vec2(uv.x, 0.49);
 	vec3 hz_day = pano(day_tex, aligned(hz, sun_uv, day_sun, 0.0), 2.2) * day_gain;
 	vec3 haze = mix(pano(night_tex, hz, 1.0) * night_gain * vec3(0.55, 0.7, 1.0), mix(hz_day, haze_col * day_gain, 0.5 * humid), daylight);
-	haze = mix(haze, pano(dusk_tex, aligned(hz, sun_uv, dusk_sun, 0.0), 6.0) * mix(0.4, 1.0, daylight), dusk);
+	haze = mix(haze, dusk_col(pano(dusk_tex, aligned(hz, sun_uv, dusk_sun, 0.0), 6.0)) * mix(0.4, 1.0, daylight), dusk);
 	col = mix(col, mix(haze, grey * 0.4, storm), below);
 	col += vec3(0.75, 0.8, 1.0) * flash;
 	COLOR = col;
