@@ -451,12 +451,7 @@ static func _props(root: Node3D, h: Dictionary) -> void:
 	place(root, "watering_can_metal_01", Vector3(L.NURSERY.x - 2.4, 0.0, L.NURSERY.y + 1.2), 1.2, 2.2)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5
-	var seed_pts := []
-	for i in 300:
-		seed_pts.append(Vector3(L.NURSERY.x - 1.8 + rng.randf() * 3.6, 0.12, L.NURSERY.y - 1.3 + rng.randf() * 2.6))
-	var smi := F.grass(root, seed_pts, F.tuft_mesh(7, 0.3, 0.012), rng, 0.0)
-	for i in 300:
-		smi.multimesh.set_instance_color(i, Color(0.45, 0.72, 0.2).lerp(Color(0.6, 0.8, 0.3), rng.randf()))
+	var smi := F.seedling_bed(root, Vector3(L.NURSERY.x, 0.12, L.NURSERY.y), Vector2(3.7, 2.7), 300, rng)
 	h.seedlings = smi
 
 	# Chuồng vịt: bamboo fence, thatched shelter, gate on the west side
@@ -640,14 +635,13 @@ static func _plants(root: Node3D) -> void:
 			else:
 				F.palm(root, Vector3(o.x, 0, o.y), rng, rng.randf() < 0.4)
 
-	# Grass tufts on open ground, taller along bunds and the canal
-	var pts := []
-	while pts.size() < 12000:
-		var x := rng.randf_range(-32, 32)
-		var z := rng.randf_range(-36, 30)
-		if _clear_for_grass(x, z):
-			pts.append(Vector3(x, 0, z))
-	F.grass(root, pts, F.tuft_mesh(10, 0.3, 0.02), rng, 0.35, 8.0, 40.0)
+	# The lawn: dense short blades that follow the camera (grass_lawn.gd),
+	# masked off the paddy, yard, paths, house, canal and pond. No shadows.
+	var lawn: Node3D = preload("res://scripts/grass_lawn.gd").new()
+	lawn.name = "Lawn"
+	root.add_child(lawn)
+	# Taller, thin-bladed tufts only where grass grows rank: bund tops and
+	# canal banks.
 	var tall := []
 	var b: float = L.FIELD.bund
 	for i in 700:
@@ -660,7 +654,7 @@ static func _plants(root: Node3D) -> void:
 	for i in 500:
 		var x: float = [L.CANAL.x0 - 0.25, L.CANAL.x1 + 0.25][i % 2] + rng.randf_range(-0.2, 0.2)
 		tall.append(Vector3(x, 0, rng.randf_range(-34, 30)))
-	F.grass(root, tall, F.tuft_mesh(10, 0.5, 0.022), rng, 0.25, 8.0, 60.0)
+	F.grass(root, tall, F.tuft_mesh(16, 0.42, 0.0055), rng, 0.3, 8.0, 40.0)
 
 	# Poly Haven plants and rocks around the edges
 	var weeds := []

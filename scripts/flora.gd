@@ -5,6 +5,7 @@
 extends RefCounted
 
 const FOLIAGE = preload("res://shaders/foliage.gdshader")
+const BLADE = preload("res://shaders/grass_blade.gdshader")
 
 static var _tex := {}
 static var _mats := {}
@@ -32,10 +33,19 @@ static func material(kind: String) -> ShaderMaterial:
 	if _mats.has(kind):
 		return _mats[kind]
 	var m := ShaderMaterial.new()
-	m.shader = FOLIAGE
+	# Untextured blades skip the alpha-clip path; leaf cards keep it.
+	m.shader = BLADE if kind in ["blade", "seedling"] else FOLIAGE
+	m.set_shader_parameter("noise", wind_noise())
 	match kind:
+		"seedling": # nursery bed: soft, short, fluttering
+			m.set_shader_parameter("sway", 0.12)
+			m.set_shader_parameter("flex_sway", 0.02)
+			m.set_shader_parameter("translucency", 0.45)
+			m.set_shader_parameter("rough", 0.55)
+			m.set_shader_parameter("keep_normal", true)
 		"blade": # rice and grass: colour from vertices/instances
 			m.set_shader_parameter("sway", 0.09)
+			m.set_shader_parameter("keep_normal", true)
 			m.set_shader_parameter("translucency", 0.25)
 		"bamboo_leaf":
 			m.set_shader_parameter("use_leaf", true)
@@ -360,6 +370,11 @@ static func tuft_mesh(blades := 9, height := 0.35, width := 0.025) -> ArrayMesh:
 		var h := height * rng.randf_range(0.6, 1.2)
 		var lean := rng.randf_range(0.15, 0.5)
 		var base := d * rng.randf_range(0.0, 0.06)
+		# Per-blade hue and value so one tuft is not one flat colour (the
+		# instance colour multiplies this).
+		var k := rng.randf_range(0.82, 1.12)
+		var o := rng.randf()
+		var tint := Color(k * (1.0 + 0.12 * o), k, k * (1.0 - 0.25 * o))
 		var prev := []
 		for s in 5:
 			var t := s / 4.0
@@ -367,14 +382,99 @@ static func tuft_mesh(blades := 9, height := 0.35, width := 0.025) -> ArrayMesh:
 			var w := width * (1.0 - t * 0.9)
 			var cur := [p - side * w, p + side * w]
 			if s > 0:
-				var c0 := Color(1, 1, 1, (s - 1) / 4.0)
-				var c1 := Color(1, 1, 1, t)
+				var c0 := Color(tint.r, tint.g, tint.b, (s - 1) / 4.0)
+				var c1 := Color(tint.r, tint.g, tint.b, t)
 				for v in [[prev[0], c0], [prev[1], c0], [cur[1], c1], [prev[0], c0], [cur[1], c1], [cur[0], c1]]:
 					st.set_color(v[1])
+					# Normals bent to the sky: a tuft shades as a soft mass,
+					# not as flat ribbons flipping light and dark.
+					st.set_normal((Vector3.UP * 1.4 + d * 0.6 + side * 0.2).normalized())
 					st.add_vertex(v[0])
 			prev = cur
-	st.generate_normals()
 	return st.commit()
+
+
+# One patch of the nursery bed (vạt mạ): ~28 rice seedlings 15-25 cm tall,
+# each 3-4 narrow leaves arching from a pale base, sown densely so the bed
+# reads as a velvet of young green. Vertex colour carries per-seedling
+# variation and COLOR.a the height (AO and wind weight).
+static func seedling_patch_mesh(n := 28, radius := 0.075) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	for i in n:
+		var r := radius * sqrt(rng.randf())
+		var aa := rng.randf() * TAU
+		var root := Vector3(cos(aa) * r, 0.0, sin(aa) * r)
+		var hgt := rng.randf_range(0.15, 0.25)
+		var k := rng.randf_range(0.85, 1.12)
+		var yellow := rng.randf()
+		var col := Color(0.46, 0.7, 0.2).lerp(Color(0.62, 0.78, 0.3), yellow * 0.6) * k
+		var phi := rng.randf() * TAU
+		for j in rng.randi_range(3, 4):
+			var a := phi + PI * j + rng.randf_range(-0.6, 0.6)
+			var d := Vector3(cos(a), 0, sin(a))
+			var side := Vector3(-d.z, 0, d.x)
+			var ln := hgt * (1.0 - 0.18 * j) * rng.randf_range(0.85, 1.1)
+			var th0 := deg_to_rad(4.0 + 10.0 * j + rng.randf_range(0.0, 6.0))
+			var droop := deg_to_rad(20.0 + 22.0 * j) * rng.randf_range(0.6, 1.3)
+			var w := rng.randf_range(0.0022, 0.0032)
+			var p := root + Vector3(0, 0.01 * j, 0)
+			var prev := []
+			for s in 5:
+				var f := s / 4.0
+				var th := th0 + droop * f * f
+				var tng := (Vector3.UP * cos(th) + d * sin(th)).normalized()
+				var ww := w * (1.0 - pow(f, 2.0))
+				var cur := [p - side * ww, p + side * ww, p.y]
+				if s > 0:
+					var nrm := (Vector3.UP * 1.3 + d * 0.5).normalized()
+					var c0: Color = Color(0.72, 0.76, 0.5).lerp(col, minf((s - 1) / 1.5, 1.0))
+					var c1: Color = Color(0.72, 0.76, 0.5).lerp(col, minf(s / 1.5, 1.0))
+					if s == 4:
+						c1 = c1.lerp(Color(0.6, 0.55, 0.3), 0.35 * float(rng.randf() < 0.3))
+					c0.a = clampf(prev[2] / 0.25, 0.0, 1.0)
+					c1.a = clampf(cur[2] / 0.25, 0.0, 1.0)
+					for v in [[prev[0], c0], [prev[1], c0], [cur[1], c1], [prev[0], c0], [cur[1], c1], [cur[0], c1]]:
+						st.set_color(v[1])
+						st.set_normal(nrm)
+						st.add_vertex(v[0])
+				prev = cur
+				p += tng * (ln / 4.0)
+	return st.commit()
+
+
+# The nursery bed: `count` seedling patches on a jittered grid over `size`
+# (x, z) metres centred on `center`. main.gd scales the node in y as the
+# seedlings grow and hides patches via visible_instance_count as bundles
+# are pulled, so the instance count stays fixed.
+static func seedling_bed(parent: Node3D, center: Vector3, size: Vector2, count: int, rng: RandomNumberGenerator) -> MultiMeshInstance3D:
+	var cols := int(round(sqrt(count * size.x / size.y)))
+	var rows := int(ceil(float(count) / cols))
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = seedling_patch_mesh()
+	mm.instance_count = count
+	for i in count:
+		var cx := (float(i % cols) + 0.5 + rng.randf_range(-0.35, 0.35)) / cols - 0.5
+		var cz := (float(i / cols) + 0.5 + rng.randf_range(-0.35, 0.35)) / rows - 0.5
+		var s := rng.randf_range(0.9, 1.15)
+		var b := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s * 1.15, s * rng.randf_range(0.85, 1.1), s * 1.15))
+		mm.set_instance_transform(i, Transform3D(b, center + Vector3(cx * size.x, 0.0, cz * size.y)))
+		var k := rng.randf_range(0.9, 1.08)
+		mm.set_instance_color(i, Color(k, k * rng.randf_range(0.97, 1.03), k))
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = material("seedling")
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+	mmi.visibility_range_end = 45.0
+	mmi.visibility_range_end_margin = 5.0
+	mmi.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
+	parent.add_child(mmi)
+	return mmi
 
 
 # Scatter grass tufts at `points` ([Vector3]) with colour variation.
