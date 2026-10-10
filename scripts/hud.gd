@@ -9,6 +9,9 @@ signal new_season_pressed
 signal resume_pressed
 signal sens_changed(value: float)
 signal invert_changed(value: bool)
+signal fov_changed(value: float)
+signal quality_changed(level: int)
+signal latency_changed(value: bool)
 
 var clock: Label
 var objective: RichTextLabel
@@ -31,6 +34,12 @@ var crosshair: Panel
 var _cross_state := ""
 var sens_label: Label
 var invert_box: CheckBox
+var fov_slider: HSlider
+var fov_label: Label
+var quality_buttons: Array = []
+var latency_box: CheckBox
+var renderer: RichTextLabel
+var perf: Label # F3: frame rate, triangles, draw calls
 # rhythm mini-game
 var rhythm: Control
 var rhythm_info: RichTextLabel
@@ -174,6 +183,13 @@ func _ready() -> void:
 	banner.visible = false
 	root.add_child(banner)
 
+	perf = _label("", 13)
+	perf.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	perf.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_offset(perf, -160, 8, 160, 48)
+	perf.visible = false
+	root.add_child(perf)
+
 	_build_rhythm(root)
 	_build_screens(root)
 	# Nothing on the in-game overlay may take the mouse: while the cursor is
@@ -311,6 +327,37 @@ E: tương tác (giữ để lặp lại) · 1–7: chọn dụng cụ · Q: hu�
 	invert_box.text = "Đảo chiều chuột lên/xuống · Invert Y"
 	invert_box.toggled.connect(func(v: bool): invert_changed.emit(v))
 	s[1].add_child(invert_box)
+	fov_label = _label("", 15)
+	s[1].add_child(fov_label)
+	fov_slider = HSlider.new()
+	fov_slider.min_value = 55
+	fov_slider.max_value = 80
+	fov_slider.step = 1
+	fov_slider.custom_minimum_size = Vector2(360, 24)
+	fov_slider.value_changed.connect(_on_fov_slider)
+	s[1].add_child(fov_slider)
+	s[1].add_child(_label("Chất lượng đồ họa · Graphics quality (F3: FPS)", 15))
+	var qrow := HBoxContainer.new()
+	qrow.add_theme_constant_override("separation", 6)
+	var group := ButtonGroup.new()
+	for i in 3:
+		var b := Button.new()
+		b.text = ["Thấp · Low", "Vừa · Medium", "Cao · High"][i]
+		b.toggle_mode = true
+		b.button_group = group
+		b.custom_minimum_size = Vector2(116, 34)
+		b.pressed.connect(func(): quality_changed.emit(i))
+		qrow.add_child(b)
+		quality_buttons.append(b)
+	s[1].add_child(qrow)
+	latency_box = CheckBox.new()
+	latency_box.text = "Giảm độ trễ chuột (VSync mailbox) · Low latency"
+	latency_box.toggled.connect(func(v: bool): latency_changed.emit(v))
+	s[1].add_child(latency_box)
+	renderer = _rich(13)
+	renderer.custom_minimum_size = Vector2(360, 0)
+	s[1].add_child(renderer)
+	s[1].add_child(_label("F11: toàn màn hình · fullscreen", 12))
 	var resume := _button("Tiếp tục · Resume")
 	resume.pressed.connect(func(): resume_pressed.emit())
 	s[1].add_child(resume)
@@ -330,6 +377,22 @@ E: tương tác (giữ để lặp lại) · 1–7: chọn dụng cụ · Q: hu�
 func _on_sens_slider(v: float) -> void:
 	sens_label.text = "Độ nhạy chuột · Mouse sensitivity: %.2f" % v
 	sens_changed.emit(v)
+
+
+func _on_fov_slider(v: float) -> void:
+	fov_label.text = "Góc nhìn · Field of view: %d°" % int(v)
+	fov_changed.emit(v)
+
+
+func set_video_settings(fov: float, quality: int, low_latency: bool) -> void:
+	fov_slider.set_value_no_signal(fov)
+	fov_label.text = "Góc nhìn · Field of view: %d°" % int(fov)
+	quality_buttons[quality].set_pressed_no_signal(true)
+	latency_box.set_pressed_no_signal(low_latency)
+
+
+func set_renderer(text: String) -> void:
+	renderer.text = "[color=#bbbbbb]" + text + "[/color]"
 
 
 func set_mouse_settings(sens: float, invert: bool) -> void:

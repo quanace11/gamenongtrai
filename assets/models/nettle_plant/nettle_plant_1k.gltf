@@ -195,9 +195,9 @@
       "uri": "textures/nettle_plant_nor_gl_1k.jpg"
     },
     {
-      "mimeType": "image/jpeg",
+      "mimeType": "image/png",
       "name": "nettle_plant_diff-nettle_plant_alpha",
-      "uri": "textures/nettle_plant_diff_1k.jpg"
+      "uri": "textures/nettle_plant_diff_1k.png"
     },
     {
       "mimeType": "image/jpeg",

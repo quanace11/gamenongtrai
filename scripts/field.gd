@@ -6,6 +6,7 @@ const L = preload("res://scripts/layout.gd")
 const A = preload("res://scripts/assets.gd")
 const F = preload("res://scripts/flora.gd")
 const W = preload("res://scripts/world.gd")
+const RiceField = preload("res://scripts/rice_field.gd")
 const SOIL = preload("res://shaders/soil.gdshader")
 const N := 8 # soil grid: 8 x 8 cells of 2 m
 const CELL := 2.0
@@ -35,8 +36,8 @@ var _noise := PackedFloat32Array()
 var _soil: MeshInstance3D
 var _water: MeshInstance3D
 var _soil_mat: ShaderMaterial
-var _rice: MultiMeshInstance3D
-var _panicles: MultiMeshInstance3D
+var _rice: Node3D # rice_field.gd: the visible hills, stubble and panicles
+var _rice_water_y := INF
 var _weeds: MultiMeshInstance3D
 var _weed_pos: Array = []
 
@@ -67,9 +68,9 @@ func _ready() -> void:
 	_water.visible = false
 	add_child(_water)
 
-	_rice = _multimesh(_clump_mesh(), MAX_CLUMPS)
-	_panicles = _multimesh(_panicle_mesh(), MAX_CLUMPS)
-	_weeds = _multimesh(F.tuft_mesh(8, 0.45, 0.03), 80)
+	_rice = RiceField.new()
+	add_child(_rice)
+	_weeds = _multimesh(F.tuft_mesh(14, 0.42, 0.006), 80)
 	for i in 80:
 		_weed_pos.append(Vector2(randf_range(-7.6, 7.6), randf_range(-7.6, 7.6)))
 
@@ -86,62 +87,6 @@ func _multimesh(mesh: Mesh, count: int) -> MultiMeshInstance3D:
 	mmi.material_override = F.material("blade")
 	add_child(mmi)
 	return mmi
-
-
-# One transplanted clump (khóm lúa): ~16 curved, tapering leaves. Vertex
-# alpha runs 0 at the base to 1 at the tip for the foliage shader's AO.
-func _clump_mesh() -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var blades := 16
-	for i in blades:
-		var a := float(i) / blades * TAU + randf() * 0.5
-		var lean := 0.15 + randf() * 0.3
-		var h := 0.7 + randf() * 0.35
-		var w := 0.018 + randf() * 0.008
-		var d := Vector3(cos(a), 0, sin(a))
-		var side := Vector3(-sin(a), 0, cos(a))
-		var base := d * 0.025
-		var prev := []
-		for k in 6:
-			var t := k / 5.0
-			var p := base + d * lean * h * t * t + Vector3(0, h * (t - 0.25 * t * t * lean * 2.0), 0)
-			var ww := w * (1.0 - t * 0.85)
-			var cur := [p - side * ww, p + side * ww]
-			if k > 0:
-				var c0 := Color(1, 1, 1, (k - 1) / 5.0)
-				var c1 := Color(1, 1, 1, t)
-				for v in [[prev[0], c0], [prev[1], c0], [cur[1], c1], [prev[0], c0], [cur[1], c1], [cur[0], c1]]:
-					st.set_color(v[1])
-					st.add_vertex(v[0])
-			prev = cur
-	st.generate_normals()
-	return st.commit()
-
-
-# Drooping panicles (bông lúa): arcs of grain lumps hanging out of the clump.
-func _panicle_mesh() -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in 7:
-		var a := i / 7.0 * TAU + randf() * 0.4
-		var d := Vector3(cos(a), 0, sin(a))
-		var side := Vector3(-sin(a), 0, cos(a))
-		var prev := []
-		for k in 7:
-			var t := k / 6.0
-			var p := d * (0.04 + 0.2 * t) + Vector3(0, 0.98 - 0.32 * t * t, 0)
-			var w := 0.022 * sin(PI * clampf(t * 1.1 + 0.1, 0.0, 1.0)) + 0.004
-			var cur := [p - side * w, p + side * w, p + Vector3(0, w, 0)]
-			if k > 0:
-				var c := Color(1, 1, 1, 1)
-				for tri in [[prev[0], prev[1], cur[1]], [prev[0], cur[1], cur[0]], [prev[0], prev[2], cur[2]], [prev[0], cur[2], cur[0]]]:
-					for v in tri:
-						st.set_color(c)
-						st.add_vertex(v)
-			prev = cur
-	st.generate_normals()
-	return st.commit()
 
 
 func cell_at(x: float, z: float) -> int:
@@ -334,6 +279,10 @@ func refresh() -> void:
 		_update_rice()
 	_water.visible = water > 0.15
 	_water.position.y = L.FIELD.y + 0.01 + water * WATER_VIS
+	var wy: float = _water.position.y if _water.visible else -100.0
+	if wy != _rice_water_y:
+		_rice_water_y = wy
+		_rice.set_water_y(wy)
 	_soil_mat.set_shader_parameter("wet", clampf(water / 2.0, 0.0, 1.0))
 
 
@@ -376,31 +325,7 @@ func _update_soil() -> void:
 
 func _update_rice() -> void:
 	rice_dirty = false
-	var g := float(growth_day)
-	var grow := 0.32 + 0.68 * clampf(g / 5.0, 0.0, 1.0)
-	var ripe := clampf((g - 5.0) / 3.0, 0.0, 1.0)
-	var yellow := clampf(pest - 0.3, 0.0, 0.7) + (1.0 - health) * 0.5
-	var mm := _rice.multimesh
-	var pm := _panicles.multimesh
-	var pi := 0
-	for i in clumps.size():
-		var cl: Dictionary = clumps[i]
-		var b := Basis(Vector3.UP, cl.rot)
-		var pos := Vector3(cl.x, L.FIELD.y, cl.z)
-		if cl.cut:
-			mm.set_instance_transform(i, Transform3D(b.scaled(Vector3(0.8, 0.18, 0.8)), pos))
-			mm.set_instance_color(i, Color(0.78, 0.68, 0.42))
-			continue
-		var c := Color(0.34, 0.56, 0.16).lerp(Color(0.74, 0.64, 0.3), ripe)
-		c = c.lerp(Color(0.7, 0.6, 0.3), yellow * (1.0 - ripe))
-		mm.set_instance_transform(i, Transform3D(b.scaled(Vector3(grow, grow, grow)), pos))
-		mm.set_instance_color(i, c)
-		if growth_day >= 5:
-			pm.set_instance_transform(pi, Transform3D(b.scaled(Vector3(grow, grow * (1.0 - ripe * 0.1), grow)), pos))
-			pm.set_instance_color(pi, Color(0.55, 0.62, 0.3).lerp(Color(0.86, 0.7, 0.32), ripe))
-			pi += 1
-	mm.visible_instance_count = clumps.size()
-	pm.visible_instance_count = pi
+	_rice.update(clumps, growth_day, pest, health)
 	var wm := _weeds.multimesh
 	var nw := int(round(weeds * 80))
 	wm.visible_instance_count = nw
