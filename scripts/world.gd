@@ -103,9 +103,7 @@ static func place_part(parent: Node3D, id: String, pos: Vector3, scale := 1.0, y
 			best = p
 	var mi := MeshInstance3D.new()
 	mi.mesh = best.mesh
-	mi.position = pos
-	mi.scale = Vector3.ONE * scale
-	mi.rotation.y = yaw
+	mi.transform = Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * scale), pos) * best.xf
 	parent.add_child(mi)
 	return mi
 
@@ -1164,32 +1162,7 @@ static func _buffalo(root: Node3D) -> Node3D:
 static func _plants(root: Node3D) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 2024
-	# Lũy tre around the farm and the village edge
-	var groves := [Vector2(-24, -30), Vector2(24, -26), Vector2(-26, 18), Vector2(20, 22), Vector2(26, -6), Vector2(-6, -34), Vector2(10, -33)]
-	for x in range(-30, 31, 6):
-		groves.append(Vector2(x + rng.randf_range(-1.5, 1.5), -38 + rng.randf_range(-1, 1)))
-	for z in range(-30, 25, 7):
-		groves.append(Vector2(-33 + rng.randf_range(-1, 1), z + rng.randf_range(-2, 2)))
-		groves.append(Vector2(33 + rng.randf_range(-1, 1), z + rng.randf_range(-2, 2)))
-	for g in groves:
-		F.bamboo(root, Vector3(g.x, 0, g.y), rng, rng.randi_range(10, 16))
-	for p in [Vector2(8, -24), Vector2(11, -23), Vector2(-12, -18), Vector2(17, -12), Vector2(-15, 3), Vector2(-24, -14), Vector2(7, -31)]:
-		F.banana(root, Vector3(p.x, 0, p.y), rng)
-	for p in [Vector2(-8, -30), Vector2(7, -29), Vector2(-14, 14), Vector2(15, -2), Vector2(-24, -18), Vector2(-3, -31)]:
-		F.palm(root, Vector3(p.x, 0, p.y), rng, false)
-	for p in [Vector2(22, 12), Vector2(-17, -4), Vector2(-21, -5)]:
-		F.palm(root, Vector3(p.x, 0, p.y), rng, true)
-	# Village tree lines across the paddies
-	for i in 26:
-		var a := rng.randf() * TAU
-		var r := rng.randf_range(55, 85)
-		var c := Vector2(cos(a), sin(a)) * r
-		for k in rng.randi_range(2, 4):
-			var o := c + Vector2(rng.randf_range(-6, 6), rng.randf_range(-6, 6))
-			if rng.randf() < 0.65:
-				F.bamboo(root, Vector3(o.x, 0, o.y), rng, 8)
-			else:
-				F.palm(root, Vector3(o.x, 0, o.y), rng, rng.randf() < 0.4)
+	_trees(root)
 
 	# Grass tufts on open ground, taller along bunds and the canal
 	var pts := []
@@ -1227,18 +1200,90 @@ static func _plants(root: Node3D) -> void:
 			shrubs.append(pt)
 		else:
 			weeds.append(pt)
-	for i in 24:
+	# River stones on the pond rim and canal banks: grey, half buried, a few
+	# small ones beside each bigger one.
+	for i in 22:
 		var a := rng.randf() * TAU
-		var r: float = L.POND.r + rng.randf_range(0.4, 1.2)
-		rocks.append([Vector3(L.POND.x + cos(a) * r, -0.06, L.POND.z + sin(a) * r), rng.randf() * TAU, rng.randf_range(1.2, 2.4)])
-	for i in 30:
-		rocks.append([Vector3([L.CANAL.x0 - 0.4, L.CANAL.x1 + 0.4][i % 2], -0.06, rng.randf_range(-30, 26)), rng.randf() * TAU, rng.randf_range(1.2, 2.2)])
-	A.scatter(root, "weed_plant_02", weeds)
-	A.scatter(root, "nettle_plant", weeds.slice(0, weeds.size() / 2))
-	A.scatter(root, "shrub_04", shrubs)
-	A.scatter(root, "fern_02", shrubs)
-	A.scatter(root, "rock_07", rocks)
-	A.scatter(root, "stone_01", rocks.slice(0, 20))
+		var r: float = L.POND.r + rng.randf_range(0.25, 0.9)
+		rocks.append([Vector3(L.POND.x + cos(a) * r, 0.0, L.POND.z + sin(a) * r), rng.randf() * TAU, rng.randf_range(0.8, 1.7)])
+	for i in 26:
+		rocks.append([Vector3([L.CANAL.x0 - 0.35, L.CANAL.x1 + 0.35][i % 2] + rng.randf_range(-0.15, 0.15), 0.0, rng.randf_range(-30, 26)), rng.randf() * TAU, rng.randf_range(0.8, 1.6)])
+	var pebbles := []
+	for p in rocks:
+		for k in 2:
+			var o := Vector3(rng.randf_range(-0.5, 0.5), 0.0, rng.randf_range(-0.5, 0.5))
+			pebbles.append([p[0] + o, rng.randf() * TAU, rng.randf_range(0.6, 1.2)])
+	A.scatter(root, "weed_plant_02", weeds, true, 30.0)
+	A.scatter(root, "nettle_plant", weeds.slice(0, weeds.size() / 2), true, 30.0)
+	A.scatter(root, "shrub_04", shrubs, true, 40.0)
+	A.scatter(root, "fern_02", shrubs, true, 40.0)
+	A.scatter(root, "rock_07", rocks, true, 45.0, 0.4, A.recolor("rock_07", 0.25, Color(0.84, 0.87, 0.9), 0.95))
+	A.scatter(root, "stone_01", pebbles, false, 25.0, 0.35, A.recolor("stone_01", 0.2, Color(0.8, 0.82, 0.84), 0.9))
+
+
+# Village trees. A lũy tre hedge closes the homestead on the north, west and
+# east (the south opens onto the paddies), bananas and areca palms stand in
+# the garden, and across the paddies other villages read as dark islands of
+# bamboo with palms and fruit trees rising above them.
+static func _trees(root: Node3D) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2025
+	var groves := [Vector2(-24, -30), Vector2(24, -26), Vector2(-26, 18), Vector2(20, 22), Vector2(26, -6), Vector2(-6, -34), Vector2(10, -33)]
+	# the hedge: clumps every ~4.5 m so their arching crowns close into a wall
+	for i in 15:
+		groves.append(Vector2(-32 + i * 4.6 + rng.randf_range(-1.0, 1.0), -38.5 + rng.randf_range(-1.2, 1.2)))
+	for i in 11:
+		var z := -34.0 + i * 4.8 + rng.randf_range(-1.0, 1.0)
+		groves.append(Vector2(-34 + rng.randf_range(-1.2, 1.2), z))
+		if i < 10:
+			groves.append(Vector2(34 + rng.randf_range(-1.2, 1.2), z))
+	# the hedge bends round the south-west and south-east corners
+	for g in [Vector2(-31, 19), Vector2(-28, 23), Vector2(31, 14), Vector2(28, 19), Vector2(24, 24)]:
+		groves.append(g + Vector2(rng.randf_range(-1, 1), rng.randf_range(-1, 1)))
+	for g in groves:
+		F.bamboo(root, Vector3(g.x, 0, g.y), rng, rng.randf_range(0.85, 1.1))
+	for p in [Vector2(8, -24), Vector2(11, -23), Vector2(-12, -18), Vector2(17, -12), Vector2(-15, 3), Vector2(-24, -14), Vector2(7, -31),
+			Vector2(-9, -31), Vector2(14, -27), Vector2(-22, -21), Vector2(21, -16), Vector2(-27, -2), Vector2(24, 4)]:
+		F.banana(root, Vector3(p.x, 0, p.y), rng)
+	for p in [Vector2(-8, -30), Vector2(7, -29), Vector2(-14, 14), Vector2(15, -2), Vector2(-24, -18), Vector2(-3, -31), Vector2(18, -24), Vector2(-29, 8)]:
+		F.palm(root, Vector3(p.x, 0, p.y), rng, false)
+	for p in [Vector2(22, 12), Vector2(-17, -4), Vector2(-21, -5)]:
+		F.palm(root, Vector3(p.x, 0, p.y), rng, true)
+	# Other villages across the paddies: [centre x, centre z, radius].
+	# Gaps between them leave the karst towers in view.
+	for v in [[-60, 85, 22], [45, 110, 28], [-15, 165, 30], [95, 15, 25], [80, -75, 22], [150, 60, 30],
+			[-90, 35, 26], [-85, -55, 24], [-150, -10, 30], [-35, -100, 26], [40, -115, 30], [0, -170, 35]]:
+		_village(root, Vector2(v[0], v[1]), v[2], rng)
+
+
+static func _village(root: Node3D, c: Vector2, rad: float, rng: RandomNumberGenerator) -> void:
+	var items := []
+	var p1 := rng.randf() * TAU
+	var p2 := rng.randf() * TAU
+	var r_at := func(a: float) -> float: return rad * (1.0 + 0.18 * sin(2.0 * a + p1) + 0.1 * sin(3.0 * a + p2))
+	# the bamboo ring, a clump every ~4 m, with a staggered inner row
+	var n := int(TAU * rad / 4.0)
+	for i in n * 3 / 2:
+		var a := (i % n + (0.5 if i >= n else 0.0) + rng.randf_range(-0.3, 0.3)) / n * TAU
+		var r: float = r_at.call(a) + rng.randf_range(-1.5, 1.5) - (4.0 if i >= n else 0.0)
+		var s := rng.randf_range(0.8, 1.2)
+		items.append([F.bamboo_mesh(rng.randi() % F.BAMBOO_VARIANTS, 3), Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * s), Vector3(c.x + cos(a) * r, 0.0, c.y + sin(a) * r))])
+	# fruit trees, areca and coconut palms inside, above the bamboo
+	for i in int(rad * 0.8):
+		var a := rng.randf() * TAU
+		var r: float = r_at.call(a) * sqrt(rng.randf()) * 0.8
+		var pos := Vector3(c.x + cos(a) * r, 0.0, c.y + sin(a) * r)
+		var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.85, 1.2))
+		var kind := rng.randf()
+		var mesh: Mesh
+		if kind < 0.55:
+			mesh = F.village_tree_mesh(rng.randi() % 12)
+		elif kind < 0.85:
+			mesh = F.palm_mesh(rng.randi() % 10, false, 1)
+		else:
+			mesh = F.palm_mesh(rng.randi() % 10, true, 1)
+		items.append([mesh, Transform3D(basis, pos)])
+	F.far_group(root, items)
 
 
 static func _clear_for_grass(x: float, z: float) -> bool:

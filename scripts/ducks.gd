@@ -184,5 +184,5 @@ func step(dt: float, player: Vector3, fwd: Vector3, pole_active: bool, pen_open:
 		_quack_t = randf_range(2, 6)
 		for d in list:
 			if d.pos.distance_to(player) < 15.0:
-				audio.play("quack", -6.0)
+				audio.play_at("quack", d.pos + Vector3(0, 0.3, 0), -4.0, randf_range(0.92, 1.08), 3.0)
 				break

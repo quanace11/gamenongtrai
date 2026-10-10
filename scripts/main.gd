@@ -35,6 +35,7 @@ var moon: DirectionalLight3D
 var rain: CPUParticles3D
 var smoke: CPUParticles3D
 var hoe_mark: MeshInstance3D
+var body_shadow: Node3D
 
 # ---------------------------------------------------------------- state
 var minutes := 6.0 * 60.0
@@ -74,6 +75,10 @@ var autotest := false
 var touring := false
 var mouse_sens := 1.0 # multiplier on the base look speed
 var invert_y := false
+var quality := 2 # 0 Thấp, 1 Vừa, 2 Cao
+var low_latency := false
+var fullscreen := false
+var _high := {} # the "Cao" values of the costly switches, read once
 var _skip_motion := 0
 const SETTINGS_PATH := "user://settings.cfg"
 const KEY_LOOK_YAW := 1.8 # rad/s with the arrow keys (touchpad / accessibility fallback)
@@ -107,7 +112,6 @@ func _ready() -> void:
 	ducks.setup(audio, 10)
 
 	camera = Camera3D.new()
-	camera.fov = 72
 	camera.near = 0.05
 	camera.far = 1500
 	add_child(camera)
@@ -116,6 +120,7 @@ func _ready() -> void:
 	player.pos = Vector3(L.START.x, 0, L.START.y)
 	tools = ToolsScript.new()
 	camera.add_child(tools)
+	_make_body_shadow()
 
 	hud = HudScript.new()
 	add_child(hud)
@@ -124,6 +129,9 @@ func _ready() -> void:
 	hud.resume_pressed.connect(_set_paused.bind(false))
 	hud.sens_changed.connect(_on_sens_changed)
 	hud.invert_changed.connect(_on_invert_changed)
+	hud.fov_changed.connect(_on_fov_changed)
+	hud.quality_changed.connect(_on_quality_changed)
+	hud.latency_changed.connect(_on_latency_changed)
 	_load_settings()
 	transplant = TransplantScript.new()
 	add_child(transplant)
@@ -786,16 +794,32 @@ func _notification(what: int) -> void:
 
 func _load_settings() -> void:
 	var cfg := ConfigFile.new()
-	if cfg.load(SETTINGS_PATH) == OK:
+	# Tours and the autotest ignore the saved settings so their shots and
+	# numbers do not depend on whoever ran the game last on this machine.
+	if not autotest and not touring and cfg.load(SETTINGS_PATH) == OK:
 		mouse_sens = clampf(float(cfg.get_value("mouse", "sensitivity", mouse_sens)), 0.2, 3.0)
 		invert_y = bool(cfg.get_value("mouse", "invert_y", invert_y))
+		player.fov_base = clampf(float(cfg.get_value("video", "fov", player.fov_base)), 55.0, 80.0)
+		quality = clampi(int(cfg.get_value("video", "quality", quality)), 0, 2)
+		low_latency = bool(cfg.get_value("video", "low_latency", low_latency))
+		fullscreen = bool(cfg.get_value("video", "fullscreen", fullscreen))
 	hud.set_mouse_settings(mouse_sens, invert_y)
+	hud.set_video_settings(player.fov_base, quality, low_latency)
+	hud.set_renderer(_renderer_text())
+	_apply_quality()
+	_apply_display()
 
 
 func _save_settings() -> void:
+	if autotest or touring:
+		return
 	var cfg := ConfigFile.new()
 	cfg.set_value("mouse", "sensitivity", mouse_sens)
 	cfg.set_value("mouse", "invert_y", invert_y)
+	cfg.set_value("video", "fov", player.fov_base)
+	cfg.set_value("video", "quality", quality)
+	cfg.set_value("video", "low_latency", low_latency)
+	cfg.set_value("video", "fullscreen", fullscreen)
 	cfg.save(SETTINGS_PATH)
 
 
@@ -806,6 +830,131 @@ func _on_sens_changed(v: float) -> void:
 func _on_invert_changed(v: bool) -> void:
 	invert_y = v
 	_save_settings()
+
+
+func _on_fov_changed(v: float) -> void:
+	player.fov_base = v # saved when the pause menu closes
+	camera.fov = v
+
+
+func _on_quality_changed(level: int) -> void:
+	quality = level
+	_apply_quality()
+	_save_settings()
+
+
+func _on_latency_changed(v: bool) -> void:
+	low_latency = v
+	_apply_display()
+	_save_settings()
+
+
+# ---------------------------------------------------------------- video settings
+# Thấp / Vừa / Cao. "Cao" is whatever _setup_environment and project.godot
+# chose; the lower presets only switch the costly parts off, so they keep
+# working however the look is tuned. Nodes with a costly density or draw
+# distance join the "quality" group and get set_quality(level); nodes made
+# later can read get_tree().root.get_meta("quality").
+func _apply_quality() -> void:
+	var vp := get_viewport()
+	if _high.is_empty():
+		_high = {"ssr": env.ssr_enabled, "ssil": env.ssil_enabled, "ssao": env.ssao_enabled,
+			"vfog": env.volumetric_fog_enabled, "sdfgi": env.sdfgi_enabled,
+			"msaa": vp.msaa_3d, "shadow": int(ProjectSettings.get_setting("rendering/lights_and_shadows/directional_shadow/size", 4096))}
+	var q := quality
+	env.ssr_enabled = _high.ssr and q >= 1
+	env.ssil_enabled = _high.ssil and q >= 2
+	env.ssao_enabled = _high.ssao and q >= 1
+	env.volumetric_fog_enabled = _high.vfog and q >= 2
+	env.sdfgi_enabled = _high.sdfgi and q >= 2
+	vp.msaa_3d = _high.msaa if q >= 1 else Viewport.MSAA_DISABLED
+	var scale: float = [0.7, 0.85, 1.0][q]
+	var fsr_ok := RenderingServer.get_current_rendering_method() != "gl_compatibility"
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR if (scale < 1.0 and fsr_ok) else Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = scale
+	var shadow: int = _high.shadow
+	if q == 1:
+		shadow = mini(shadow, 2048)
+	elif q == 0:
+		shadow = mini(shadow, 1024)
+	RenderingServer.directional_shadow_atlas_set_size(shadow, true)
+	get_tree().root.set_meta("quality", q)
+	get_tree().call_group("quality", "set_quality", q)
+
+
+func _apply_display() -> void:
+	if autotest or touring or DisplayServer.get_name() == "headless":
+		return
+	# Mailbox VSync: one frame less mouse latency, no tearing; falls back to
+	# ordinary VSync where the driver lacks it.
+	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_MAILBOX if low_latency else DisplayServer.VSYNC_ENABLED)
+	var want := DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen else DisplayServer.WINDOW_MODE_WINDOWED
+	if DisplayServer.window_get_mode() != want:
+		DisplayServer.window_set_mode(want)
+
+
+func _toggle_fullscreen() -> void:
+	fullscreen = DisplayServer.window_get_mode() != DisplayServer.WINDOW_MODE_FULLSCREEN
+	_apply_display()
+	_save_settings()
+
+
+func _renderer_text() -> String:
+	var method := RenderingServer.get_current_rendering_method()
+	var names := {"forward_plus": "Forward+ (Vulkan/D3D12)", "mobile": "Mobile", "gl_compatibility": "Compatibility (OpenGL)"}
+	var t := "Đồ họa: %s · %s" % [names.get(method, method), RenderingServer.get_video_adapter_name()]
+	if method == "gl_compatibility":
+		t += "\n[color=#ffb347]Máy đang chạy chế độ Tương thích (OpenGL), nên không có phản chiếu mặt nước (SSR), ánh sáng dội (SSIL) và sương mù thể tích. Hãy cập nhật driver card đồ họa để chạy Vulkan.[/color]"
+	return t
+
+
+func _perf_text() -> String:
+	return "%d FPS · %.1f ms\n%s tam giác · %d lệnh vẽ" % [
+		Performance.get_monitor(Performance.TIME_FPS),
+		Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+		String.num_int64(int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))),
+		Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)]
+
+
+# A body that only casts a shadow, so the farmer (in a nón lá) sees their
+# own shadow on the bund and in the paddy water.
+func _make_body_shadow() -> void:
+	body_shadow = Node3D.new()
+	add_child(body_shadow)
+	var parts := []
+	var legs := CapsuleMesh.new()
+	legs.radius = 0.13
+	legs.height = 0.9
+	parts.append([legs, Vector3(0, 0.45, 0), Vector3.ZERO])
+	var torso := CapsuleMesh.new()
+	torso.radius = 0.17
+	torso.height = 0.75
+	parts.append([torso, Vector3(0, 1.08, 0.02), Vector3.ZERO])
+	var shoulders := CapsuleMesh.new()
+	shoulders.radius = 0.07
+	shoulders.height = 0.46
+	parts.append([shoulders, Vector3(0, 1.34, 0.04), Vector3(0, 0, PI / 2)])
+	for x in [-0.22, 0.22]:
+		var arm := CapsuleMesh.new()
+		arm.radius = 0.05
+		arm.height = 0.62
+		parts.append([arm, Vector3(x, 1.06, -0.04), Vector3(0.35, 0, 0)])
+	var head := SphereMesh.new()
+	head.radius = 0.1
+	head.height = 0.22
+	parts.append([head, Vector3(0, 1.53, 0.05), Vector3.ZERO])
+	var hat := CylinderMesh.new() # nón lá
+	hat.top_radius = 0.0
+	hat.bottom_radius = 0.22
+	hat.height = 0.17
+	parts.append([hat, Vector3(0, 1.67, 0.04), Vector3.ZERO])
+	for p in parts:
+		var mi := MeshInstance3D.new()
+		mi.mesh = p[0]
+		mi.position = p[1]
+		mi.rotation = p[2]
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		body_shadow.add_child(mi)
 
 
 # Mouse look and mouse buttons are read in _input, before the GUI, so no
@@ -888,14 +1037,20 @@ func _cycle_tool(step: int) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not playing or mode == "summary":
-		return
 	if not (event is InputEventKey):
 		return
 	var ek := event as InputEventKey
 	# Physical keys, like WASD movement: the same place on every layout,
 	# and not rewritten by Vietnamese typing tools such as Unikey (Telex).
 	var k: int = ek.physical_keycode if ek.physical_keycode != KEY_NONE else ek.keycode
+	if ek.pressed and not ek.echo and k == KEY_F11:
+		_toggle_fullscreen()
+		return
+	if ek.pressed and not ek.echo and k == KEY_F3:
+		hud.perf.visible = not hud.perf.visible
+		return
+	if not playing or mode == "summary":
+		return
 	if paused:
 		if ek.pressed and not ek.echo and k == KEY_ESCAPE:
 			_set_paused(false)
@@ -1141,6 +1296,8 @@ func _process(raw_dt: float) -> void:
 	if playing and not paused and mode != "summary":
 		_step(dt)
 	field.refresh()
+	if hud.perf.visible:
+		hud.set_text(hud.perf, "perf", _perf_text())
 
 
 func _step(dt: float) -> void:
@@ -1156,7 +1313,9 @@ func _step(dt: float) -> void:
 	# Shaders bend grass and ripple water around the player's feet.
 	RenderingServer.global_shader_parameter_set("player_pos", Vector3(player.pos.x, player.y, player.pos.z))
 	var pole_active: bool = tools.current == "sao" and mouse_left and mode == "walk"
-	tools.animate(dt, player.moving, player.bob_phase, real_t, pole_active, load_frac)
+	tools.animate(dt, player, real_t, pole_active, load_frac)
+	body_shadow.position = Vector3(player.pos.x, player.y, player.pos.z)
+	body_shadow.rotation.y = player.yaw
 
 	if mode == "transplant":
 		transplant.step(dt)
@@ -1196,19 +1355,8 @@ func _step(dt: float) -> void:
 	if ducks.count_outside_pen() > 5:
 		duck_forage_min += dt_min
 
-	# ambience: frogs and crickets at night, birds by day
-	amb_t -= dt
-	if amb_t <= 0.0:
-		amb_t = 0.12
-		var h := hour()
-		var night := h < 5.0 or h >= 18.5
-		var near_water := Vector2(player.pos.x, player.pos.z).length() < 25.0
-		if (night or raining) and near_water and randf() < 0.6:
-			audio.play("frog", -8.0, randf_range(0.9, 1.1))
-		if night and randf() < 0.3:
-			audio.play("cricket", -10.0)
-		if not night and not raining and randf() < 0.04:
-			audio.play("bird", -10.0, randf_range(0.9, 1.2))
+	# ambience beds, animals and village sounds follow the hour (audio.gd)
+	audio.update(dt, self)
 
 	_update_visuals(dt)
 	hud.vignette.color.a = 0.35 if player.stamina < 20.0 else 0.0
@@ -1337,6 +1485,7 @@ func _look(x: float, z: float, yaw: float, pitch: float) -> void:
 	player.pos = Vector3(x, 0, z)
 	player.yaw = yaw
 	player.pitch = pitch
+	player.teleported()
 	await _wait(0.3)
 
 
@@ -1443,6 +1592,15 @@ func _run_tour() -> void:
 	await _shot("tour-10-sunset")
 	await _set_time(22.0)
 	await _shot("tour-11-night")
+	# Carrying a full đòn gánh of sheaves along the bund, looking down at the
+	# front load and the farmer's own shadow.
+	inv.sheaves = CARRY
+	_select_tool("tay")
+	await _look_at(-4.5, -7.5, -4.5, -1, -0.62)
+	await _set_time(9.5)
+	await _wait(0.6)
+	await _shot("tour-16-ganh")
+	inv.sheaves = 0
 	get_tree().quit(0)
 
 
