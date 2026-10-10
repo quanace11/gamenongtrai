@@ -23,9 +23,9 @@ uniform float night_gain = 0.04;
 uniform float humid = 1.0; // milky, desaturated tropical haze
 uniform float day_gain = 0.8; // the day HDRIs are bright all round: keep sun/sky contrast
 uniform float mist_gain = 0.8;
-uniform float glow_gain = 0.5; // warm aureole of a low sun in wet air
-uniform float dusk_gain = 0.45; // the sunset HDRI is exposed for a bright horizon: keep it warm, not white
-uniform float dusk_sat = 1.35; // and a little richer, as the long path through wet air reddens it
+uniform float glow_gain = 0.8; // warm aureole of a low sun in wet air
+uniform float dusk_gain = 0.32; // the sunset HDRI is exposed for a bright horizon: keep it warm, not white
+uniform float dusk_sat = 1.5; // and a little richer, as the long path through wet air reddens it
 // Where the sun is in each panorama: x = u (turns), y = elevation (radians).
 uniform vec2 day_sun = vec2(0.602, 0.89);
 uniform vec2 mist_sun = vec2(0.470, 0.50);
@@ -54,7 +54,9 @@ vec2 aligned(vec2 uv, vec2 sun_uv, vec2 hdr_sun, float warp) {
 
 vec3 dusk_col(vec3 c) {
 	float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-	return max(mix(vec3(l), c, dusk_sat), vec3(0.0)) * dusk_gain;
+	// Saturate the warm horizon, and warm the cold zenith a little: the
+	// humid sky after sunset is lavender-pink, not deep blue.
+	return max(mix(vec3(l), c, dusk_sat), vec3(0.0)) * vec3(1.08, 0.96, 0.86) * dusk_gain;
 }
 
 void sky() {

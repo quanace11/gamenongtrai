@@ -33,7 +33,7 @@ uniform vec3 mud_tint = vec3(1.0, 1.0, 1.05);
 // Water: world height of the surface (-10 = dry), the silt colour of the
 // water body and how fast it swallows the mud below (per metre).
 uniform float water_y = -10.0;
-uniform vec3 silt : source_color = vec3(0.17, 0.16, 0.12);
+uniform vec3 silt : source_color = vec3(0.10, 0.095, 0.07);
 uniform float murk = 28.0;
 uniform sampler2D wave_a : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D wave_b : hint_normal, filter_linear_mipmap, repeat_enable;

@@ -1183,7 +1183,7 @@ func _update_sky() -> float:
 	env.ambient_light_energy = (0.25 + lerpf(0.2, 0.35, smoothstep(0.0, 0.45, e)) * daylight) * (1.0 + 0.3 * s) + flash * 1.5
 	# Eyes adapt: AgX maps mid grey 1:1 (no ACES bias), so day exposure is
 	# ~1.3; lift it at night so the farm stays playable by moonlight.
-	env.tonemap_exposure = lerpf(2.0, 1.2, smoothstep(0.0, 0.6, daylight)) * lerpf(1.0, 1.15, s)
+	env.tonemap_exposure = lerpf(2.0, 1.2, smoothstep(0.0, 0.4, daylight)) * lerpf(1.0, 1.15, s)
 	# Scotopic vision: colours drain at night.
 	env.adjustment_saturation = lerpf(0.7, 1.08, smoothstep(0.0, 0.5, daylight)) * lerpf(1.0, 0.85, s)
 
@@ -1206,7 +1206,7 @@ func _update_sky() -> float:
 
 	# Porch lamp: on from dusk until morning.
 	var lamp_on := 1.0 - smoothstep(0.15, 0.6, daylight)
-	lamp.light_energy = 2.2 * lamp_on
+	lamp.light_energy = 3.0 * lamp_on
 	lamp.visible = lamp_on > 0.01
 	lamp_glass.emission_energy_multiplier = 30.0 * lamp_on
 
